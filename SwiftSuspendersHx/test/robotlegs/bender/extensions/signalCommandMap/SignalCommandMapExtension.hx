@@ -20,7 +20,7 @@ class SignalCommandMapExtension implements IExtension
     /* Private Properties                                                         */
     /*============================================================================*/
 
-    private var _uid:String = UID.create(SignalCommandMapExtension);
+    private var _uid:String;
 
     /*============================================================================*/
     /* Public Functions                                                           */
@@ -30,6 +30,7 @@ class SignalCommandMapExtension implements IExtension
 	
     public function extend(context:IContext):Void
     {
+		_uid = UID.create(SignalCommandMapExtension);
         context.injector.map(ISignalCommandMap).toSingleton(SignalCommandMap);
     }
 

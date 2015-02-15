@@ -19,6 +19,7 @@ import robotlegs.bender.framework.api.ILogger;
 /**
  * @private
  */
+@:rtti
 class SignalCommandMap implements ISignalCommandMap
 {
 
@@ -41,7 +42,7 @@ class SignalCommandMap implements ISignalCommandMap
 	/**
 	 * @private
 	 */
-	public function SignalCommandMap(context:IContext)
+	public function new(context:IContext)
 	{
 		_injector = context.injector;
 		_logger = context.getLogger(this);
@@ -79,18 +80,18 @@ class SignalCommandMap implements ISignalCommandMap
 	/* Private Functions                                                          */
 	/*============================================================================*/
 
+	private function getTrigger(signalClass:Class<Dynamic>):SignalCommandTrigger
+	{
+		return cast(_triggerMap.getTrigger([signalClass]), SignalCommandTrigger);
+	}
+
+	private function getKey(signalClass:Class<Dynamic>):String
+	{
+		return "" + signalClass;
+	}
+	
 	private function createTrigger(signalClass:Class<Dynamic>):ICommandTrigger
 	{
 		return new SignalCommandTrigger(_injector, signalClass, _mappingProcessors);
-	}
-
-	private function getTrigger(signalClass:Class<Dynamic>):SignalCommandTrigger
-	{
-		return cast(_triggerMap.getTrigger(signalClass), SignalCommandTrigger);
-	}
-
-	private function getKey(signalClass:Class<Dynamic>):Dynamic
-	{
-		return signalClass;
 	}
 }

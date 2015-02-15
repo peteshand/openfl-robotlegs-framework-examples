@@ -6,10 +6,11 @@ import msignal.Signal.Signal0;
  * ...
  * @author P.J.Shand
  */
+@:rtti
 class LoadConfigSignal extends Signal0
 {
 	
-	public function LoadConfigSignal() 
+	public function new() 
 	{
 		super();
 	}

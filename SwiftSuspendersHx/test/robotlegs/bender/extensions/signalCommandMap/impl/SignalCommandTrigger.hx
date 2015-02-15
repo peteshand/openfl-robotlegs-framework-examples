@@ -7,6 +7,7 @@
 
 package robotlegs.bender.extensions.signalCommandMap.impl;
 
+import msignal.Signal.Signal0;
 import robotlegs.bender.framework.api.IInjector;
 import robotlegs.bender.extensions.commandCenter.api.ICommandExecutor;
 import robotlegs.bender.extensions.commandCenter.api.ICommandTrigger;
@@ -26,9 +27,9 @@ class SignalCommandTrigger implements ICommandTrigger
 	/* Private Properties                                                         */
 	/*============================================================================*/
 
-	private var _signalClass:Class;
+	private var _signalClass:Class<Dynamic>;
 
-	private var _signal:ISignal;
+	private var _signal:Signal0;
 
 	private var _injector:IInjector;
 
@@ -43,11 +44,7 @@ class SignalCommandTrigger implements ICommandTrigger
 	/**
 	 * @private
 	 */
-	public function SignalCommandTrigger(
-		injector:IInjector,
-		signalClass:Class,
-		processors:Array = null,
-		logger:ILogger = null)
+	public function new(injector:IInjector, signalClass:Class<Dynamic>, processors:Array<Dynamic> = null, logger:ILogger = null)
 	{
 		_injector = injector;
 
@@ -76,6 +73,7 @@ class SignalCommandTrigger implements ICommandTrigger
 		if (!_injector.hasMapping(_signalClass))
 			_injector.map(_signalClass).asSingleton();
 		_signal = _injector.getInstance(_signalClass);
+		// FIX
 		_signal.add(routePayloadToCommands);
 	}
 
@@ -84,22 +82,29 @@ class SignalCommandTrigger implements ICommandTrigger
 	 */
 	public function deactivate():Void
 	{
-		if (_signal)
-			_signal.remove(routePayloadToCommands);
+		// FIX
+		//if (_signal != null)
+		//	_signal.remove(routePayloadToCommands);
 	}
 
 	public function toString():String
 	{
-		return String(_signalClass);
+		return cast(_signalClass, String);
 	}
 
 	/*============================================================================*/
 	/* Private Functions                                                          */
 	/*============================================================================*/
 
-	private function routePayloadToCommands(... valueObjects):Void
+	/*private function routePayloadToCommands(valueObjects:Array<Dynamic>):Void
 	{
 		var payload:CommandPayload = new CommandPayload(valueObjects, _signal.valueClasses);
+		_executor.executeCommands(_mappings.getList(), payload);
+	}*/
+	
+	private function routePayloadToCommands():Void
+	{
+		var payload:CommandPayload = new CommandPayload(null, _signal.valueClasses);
 		_executor.executeCommands(_mappings.getList(), payload);
 	}
 }

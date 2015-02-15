@@ -11,7 +11,7 @@ class XMLToTypedObject
 	private var setObject:Dynamic;
 	private var StaticRef:Class<Dynamic>;
 	
-	public function XMLToTypedObject() 
+	public function new() 
 	{
 		
 	}
@@ -163,5 +163,6 @@ class XMLToTypedObject
 			setFrom(property, XMLList(children[i]));
 		}
 		return '';*/
+		return "";
 	}
 }

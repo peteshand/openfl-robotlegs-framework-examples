@@ -23,7 +23,7 @@ class ImagModelExtension implements IExtension
 	private var context:IContext;
 	private var injector:IInjector;
 	
-	public function ImagModelExtension() { }
+	public function new() { }
 	
 	/*============================================================================*/
 	/* Public Functions                                                           */
@@ -34,13 +34,15 @@ class ImagModelExtension implements IExtension
 		this.context = context;
 		injector = context.injector;
 		
+		
 		context.addConfigHandler(InstanceOfType.call(IConfigModel), handleConfigModel);
 		injector.map(ActivityModel).asSingleton();
 	}
 	
 	private function handleConfigModel(configModel:IConfigModel):Void
 	{
-		ImagModelExtension.ConfigClass = Object(configModel).constructor;
+		//ImagModelExtension.ConfigClass = configModel.constructor;
+		ImagModelExtension.ConfigClass = Reflect.getProperty(configModel, "constructor");
 		injector.map(IConfigModel).toSingleton(ImagModelExtension.ConfigClass);
 	}
 	

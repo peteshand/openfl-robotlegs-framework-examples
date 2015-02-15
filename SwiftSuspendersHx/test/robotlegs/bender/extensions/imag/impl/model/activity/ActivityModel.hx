@@ -14,7 +14,7 @@ class ActivityModel
 	@inject public var contextView:ContextView;
 	
 	private var animationCount:Int = 0;
-	private var interactionCount:Int = 0;
+	private var InteractionCount:Int = 0;
 	
 	private var _throttlingActive:Bool = false;
 	private var _throttleFramerate:Bool = false;
@@ -23,11 +23,11 @@ class ActivityModel
 	public var throttleFPS:Int = 4;
 	public var standardFPS:Int = 60;
 	
-	private var interactiveEvents:Array<String>;
+	private var InteractiveEvents:Array<String>;
 	
-	public function ActivityModel() 
+	public function new() 
 	{
-		interactiveEvents = [
+		InteractiveEvents = [
 			MouseEvent.MOUSE_DOWN,
 			MouseEvent.MOUSE_MOVE,
 			MouseEvent.MOUSE_UP,
@@ -43,9 +43,9 @@ class ActivityModel
 		animationCount = 0;
 	}
 	
-	public function interacting():Void 
+	public function Interacting():Void 
 	{
-		interactionCount = 0;
+		InteractionCount = 0;
 	}
 	
 	public var throttlingActive(get, set):Bool;
@@ -55,24 +55,26 @@ class ActivityModel
 		return _throttlingActive;
 	}
 	
-	public function set_throttlingActive(value:Bool):Void 
+	public function set_throttlingActive(value:Bool):Bool 
 	{
-		if (_throttlingActive == value) return;
+		if (_throttlingActive == value) return value;
 		_throttlingActive = value;
 		if (throttlingActive) {
 			contextView.view.stage.addEventListener(Event.ENTER_FRAME, Update);
-			for (i in 0...interactiveEvents.length) 
+			for (i in 0...InteractiveEvents.length) 
 			{
-				contextView.view.stage.addEventListener(interactiveEvents[i], OnInteraction);
+				contextView.view.stage.addEventListener(InteractiveEvents[i], OnInteraction);
 			}
 		}
 		else {
 			contextView.view.stage.removeEventListener(Event.ENTER_FRAME, Update);
-			for (j in 0...interactiveEvents.length) 
+			for (j in 0...InteractiveEvents.length) 
 			{
-				contextView.view.stage.removeEventListener(interactiveEvents[j], OnInteraction);
+				contextView.view.stage.removeEventListener(InteractiveEvents[j], OnInteraction);
 			}
 		}
+		return _throttlingActive;
+
 	}
 	
 	private var throttleFramerate(get, set):Bool;
@@ -82,25 +84,26 @@ class ActivityModel
 		return _throttleFramerate;
 	}
 	
-	private function set_throttleFramerate(value:Bool):Void 
+	private function set_throttleFramerate(value:Bool):Bool 
 	{
-		if (_throttleFramerate == value) return;
+		if (_throttleFramerate == value) return value;
 		_throttleFramerate = value;
 		if (throttleFramerate) contextView.view.stage.frameRate = throttleFPS;
 		else contextView.view.stage.frameRate = standardFPS;
+		return _throttleFramerate;
 	}
 	
 	private function OnInteraction(e:Event):Void 
 	{
-		interactionCount = 0;
+		InteractionCount = 0;
 	}
 	
 	private function Update(e:Event):Void 
 	{
 		animationCount++;
-		interactionCount++;
+		InteractionCount++;
 		
-		if (animationCount < timeout * standardFPS || interactionCount < timeout * standardFPS) {
+		if (animationCount < timeout * standardFPS || InteractionCount < timeout * standardFPS) {
 			throttleFramerate = false;
 		}
 		else {

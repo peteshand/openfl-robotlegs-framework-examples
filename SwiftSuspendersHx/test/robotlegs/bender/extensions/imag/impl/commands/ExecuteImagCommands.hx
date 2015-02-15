@@ -16,6 +16,7 @@ import robotlegs.bender.framework.api.IInjector;
  * ...
  * @author P.J.Shand
  */
+@:rtti
 class ExecuteImagCommands implements IConfig 
 {
 	@inject public var commandMap:ISignalCommandMap;
@@ -25,14 +26,16 @@ class ExecuteImagCommands implements IConfig
 	@inject public var initializeAppSignal:InitializeAppSignal;
 	@inject public var loadConfigSignal:LoadConfigSignal;
 	
-	public function ExecuteImagCommands() 
+	public function new() 
 	{
 		
 	}
 	
 	public function configure():Void
 	{
+		trace("ExecuteImagCommands");
 		commandMap.map(InitializeAppSignal).toCommand(StageSetupCommand).once();
+		commandMap.map(InitializeAppSignal).toCommand(FullStageViewportCommand).once();
 		
 		setupSwfCommands();
 		
@@ -42,10 +45,6 @@ class ExecuteImagCommands implements IConfig
 		
 		commandMap.map(LoadConfigSignal).toCommand(ConfigCommand);
 		loadConfigSignal.dispatch();
-		
-		commandMap.map(AppSetupCompleteSignal).toCommand(FullStageViewportCommand).once();
-		
-		
 	}
 	
 	private function setupSwfCommands():Void 

@@ -6,6 +6,6 @@ package robotlegs.bender.extensions.imag.api.model.config;
  */
 interface IConfigModel 
 {
-	function configURL(get, set):String;
+	var configURL(get, set):String;
 	//function set configURL(value:String):Void;
 }

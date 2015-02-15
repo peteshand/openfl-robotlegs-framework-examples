@@ -69,7 +69,7 @@ class RTTI
 			case FVar(read, write):
 			switch (field.type)
 			{
-				// might need to recurse into typedefs here, incase people are silly - dp
+				// might need to recurse Into typedefs here, incase people are silly - dp
 				case TType(t, params):
 				var def = t.get();
 				switch (def.type)

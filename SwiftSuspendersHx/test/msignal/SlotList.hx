@@ -146,7 +146,7 @@ class SlotList<TSlot:Slot<Dynamic, Dynamic>, TListener>
 	}		
 	
 	/**
-		Insert a slot into the list in a position according to its priority.
+		Insert a slot Into the list in a position according to its priority.
 		The higher the priority, the closer the item will be inserted to the 
 		list head.
 		@param slot The item to be inserted.

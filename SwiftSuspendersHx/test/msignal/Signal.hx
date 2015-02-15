@@ -34,6 +34,7 @@ typedef AnySignal = Signal<Dynamic, Dynamic>;
 	dispatched.
 **/
 @:keepSub
+@:rtti
 class Signal<TSlot:Slot<Dynamic, Dynamic>, TListener>
 {
 	public var valueClasses:Array<Dynamic>;
@@ -178,6 +179,7 @@ class Signal<TSlot:Slot<Dynamic, Dynamic>, TListener>
 /**
 	Signal that executes listeners with no arguments.
 **/
+@:rtti
 class Signal0 extends Signal<Slot0, Void -> Void>
 {
 	public function new()

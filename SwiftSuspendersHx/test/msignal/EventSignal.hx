@@ -233,7 +233,7 @@ class EventSlot<TValue> extends Slot<Dynamic, Event<Dynamic, TValue> -> Void>
 	target (the target of the most recent signal to dispatch the event) and 
 	the type. To avoid developers needing to subclass Event to create custom 
 	fields and data, Events use type parameters to define target and type 
-	constraints, and use enums as event types to allow additional data.
+	constraInts, and use enums as event types to allow additional data.
 **/
 class Event<TTarget, TType>
 {

@@ -6,10 +6,11 @@ import msignal.Signal.Signal0;
  * ...
  * @author P.J.Shand
  */
+@:rtti
 class AppSetupCompleteSignal extends Signal0 
 {
 	
-	public function AppSetupCompleteSignal() 
+	public function new() 
 	{
 		super();
 		

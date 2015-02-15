@@ -23,7 +23,7 @@ class ImagSignalExtension implements IExtension
 	private var context:IContext;
 	private var injector:IInjector;
 	
-	public function ImagSignalExtension() { }
+	public function new() { }
 	
 	/*============================================================================*/
 	/* Public Functions                                                           */

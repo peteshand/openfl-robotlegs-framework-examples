@@ -13,6 +13,7 @@ import robotlegs.bender.extensions.imag.impl.signals.AppSetupCompleteSignal;
 import robotlegs.bender.extensions.imag.impl.utils.loaders.XMLLoaderService;
 import robotlegs.bender.extensions.imag.impl.utils.parsers.XMLToTypedObject;
 
+@:rtti
 class ConfigCommand extends Command
 {	
 	@inject public var configModel:IConfigModel;
@@ -24,7 +25,7 @@ class ConfigCommand extends Command
 	private var loadCount:Int = 0;
 	private var totalAssets:Int = 0;
 	
-	public function ConfigCommand()
+	public function new()
 	{
 		xmlLoaderService = new XMLLoaderService();
 		xmlToTypedObject = new XMLToTypedObject();

@@ -1,7 +1,6 @@
 package robotlegs.bender.extensions.imag;
 
 import robotlegs.bender.extensions.imag.impl.commands.ExecuteImagCommands;
-import robotlegs.bender.extensions.imag.impl.signals.InitializeAppSignal;
 import robotlegs.bender.framework.api.IContext;
 import robotlegs.bender.framework.api.IExtension;
 import robotlegs.bender.framework.api.IInjector;
@@ -18,11 +17,11 @@ class ImagCommandExtension implements IExtension
 	/* Private Properties                                                         */
 	/*============================================================================*/
 	
-	private var _uid:String = UID.create(ImagCommandExtension);
+	private var _uid:String;
 	private var context:IContext;
 	private var injector:IInjector;
 	
-	public function ImagCommandExtension() { }
+	public function new() { }
 	
 	/*============================================================================*/
 	/* Public Functions                                                           */
@@ -30,10 +29,12 @@ class ImagCommandExtension implements IExtension
 
 	public function extend(context:IContext):Void
 	{
+		_uid = UID.create(ImagCommandExtension);
+		
 		this.context = context;
 		injector = context.injector;
 		
-		context.configure(ExecuteImagCommands);
+		context.configure([ExecuteImagCommands]);
 	}
 	
 	public function toString():String

@@ -13,7 +13,7 @@ import openfl.net.URLRequest;
  */
 class XMLLoaderService 
 {
-	public function XMLLoaderService() 
+	public function new() 
 	{
 		
 	}
@@ -47,7 +47,7 @@ class XMLLoader
 	public function load(url:String):Void
 	{
 		this.url = url;
-		if (!loader) {
+		if (loader == null) {
 			loader = new URLLoader();
 			loader.addEventListener(Event.COMPLETE, OnLoadComplete);
 			loader.addEventListener(ErrorEvent.ERROR, OnError);
@@ -63,7 +63,7 @@ class XMLLoader
 	private function OnLoadComplete(e:Event):Void 
 	{
 		available = true;
-		onComplete.dispatch(Xml(loader.data), url);
+		//onComplete.dispatch(Xml(loader.data), url);
 		this.dispose();
 	}
 	

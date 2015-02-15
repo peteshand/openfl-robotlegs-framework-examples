@@ -10,13 +10,14 @@ import robotlegs.bender.extensions.contextView.ContextView;
  * ...
  * @author P.J.Shand
  */
+@:rtti
 class StageSetupCommand extends Command 
 {
 	@inject public var contextView:ContextView;
 	
-	public function StageSetupCommand() 
+	public function new() 
 	{
-		super();
+		
 	}
 	
 	override public function execute():Void

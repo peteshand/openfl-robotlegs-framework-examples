@@ -9,12 +9,18 @@
 	<app main="com.imag.robotlegsHaxe.Main" file="SwiftSuspendersHx" path="bin" />
 	
 	<window background="#000000" fps="60" />
-	<window width="800" height="480" unless="mobile" />
+	
+	<!--<window width="0" height="0" unless="mobile" />-->
+	<window width="800" height="450" fps="60" />
+	<window width="0" height="0" fps="60" if="html5" />
+
+	<window fullscreen="true" resizable="true"/>
+	
 	<window orientation="landscape" vsync="false" antialiasing="0" if="cpp" />
 	
 	<!-- classpath, haxe libs -->
-	<source path="../openfl-swiftsuspenders" />
-	<source path="../openfl-robotlegs-framework" />
+	<source path="../../openfl-swiftsuspenders" />
+	<source path="../../openfl-robotlegs-framework" />
 	<source path="src" />
 	<source path="test" />
 	
@@ -30,5 +36,8 @@
 	
 	<!-- optimize output-->
 	<haxeflag name="-dce no" /> 
+	
+	<haxedef name="source-map-content" if="html5" />
+	<haxedef name="dom" if="html5" />
 	
 </project>
