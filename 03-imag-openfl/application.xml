@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+	<!-- NMML reference: https://gist.github.com/1763850 -->
+	
+	<!-- metadata, make sure 'package' is at least 3 segments (ie. com.mycompany.myproject) -->
+	<meta title="ImagRobotlegsBasic" package="com.imagination.robotlegs.imagBasic.ImagRobotlegsBasic" version="1.0.0" company="P.J.Shand" />
+	
+	<!-- output -->
+	<app main="com.imagination.robotlegs.imagBasic.Main" file="ImagRobotlegsBasic" path="bin" />
+	
+	<window background="#000000" fps="60" />
+	
+	<!--<window width="0" height="0" unless="mobile" />-->
+	<window width="800" height="450" fps="60" />
+	<window width="0" height="0" fps="60" if="html5" />
+	
+	<window fullscreen="true" resizable="true"/>
+	
+	<window orientation="landscape" vsync="false" antialiasing="0" if="cpp" />
+	
+	<!-- classpath, haxe libs -->
+	<source path="src" />
+	
+	
+	
+	<source path="C:/_projects/Imagination/imag-syd-as3/core/src" />
+	<source path="C:/_projects/Imagination/imag-syd-as3/robotlegs-extensions-Imag-Hx/src" />
+	
+	<source path="C:/_projects/2015/OpenFL/openfl/openfl" />
+	
+	<!--<haxelib name="openfl" />-->
+	<haxelib name="swiftsuspenders" />
+	<haxelib name="robotlegs" />
+	<haxelib name="msignal" />
+	
+	<!-- assets -->
+	<icon path="assets/openfl.svg" />
+	<assets path="assets/img" rename="img" />
+	<assets path="assets/xml" rename="xml" />
+	
+	<haxedef name="source-map-content" if="html5" />
+	<haxedef name="dom" if="html5" />
+	
+	<!-- optimize output -->
+	<haxeflag name="-dce full" />
+	<!--<haxeflag name="-dce std" />--> 
+	<!--<haxeflag name="-dce no" />--> 
+	
+</project>
