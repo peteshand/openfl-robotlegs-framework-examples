@@ -1,6 +1,6 @@
 package com.imagination.robotlegs.away3d.view.openfl.display;
 
-import com.imagination.robotlegs.away3d.services.ExampleService;
+import com.imagination.robotlegs.away3d.services.example.ExampleService;
 import robotlegs.bender.bundles.mvcs.Mediator;
 
 /**

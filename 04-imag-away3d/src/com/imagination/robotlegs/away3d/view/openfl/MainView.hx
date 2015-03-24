@@ -1,5 +1,6 @@
 package com.imagination.robotlegs.away3d.view.openfl;
 
+import com.imagination.robotlegs.away3d.view.openfl.display.SubView;
 import openfl.display.Sprite;
 
 /**
@@ -19,6 +20,9 @@ class MainView extends Sprite
 	
 	public function initialize() 
 	{
+		this.graphics.beginFill(0xEE77AA);
+		this.graphics.drawRect(0, 0, 100, 100);
+		
 		var subView:SubView = new SubView();
 		addChild(subView);
 	}

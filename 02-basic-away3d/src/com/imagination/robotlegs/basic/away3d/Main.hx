@@ -3,10 +3,10 @@ package com.imagination.robotlegs.basic.away3d;
 import openfl.display.Sprite;
 import robotlegs.bender.bundles.mvcs.MVCSBundle;
 
-import com.imagination.robotlegs.basic.commands.CommandConfig;
-import com.imagination.robotlegs.basic.model.ModelConfig;
-import com.imagination.robotlegs.basic.services.ServiceConfig;
-import com.imagination.robotlegs.basic.view.ViewConfig;
+import com.imagination.robotlegs.basic.away3d.commands.CommandConfig;
+import com.imagination.robotlegs.basic.away3d.model.ModelConfig;
+import com.imagination.robotlegs.basic.away3d.services.ServiceConfig;
+import com.imagination.robotlegs.basic.away3d.view.ViewConfig;
 
 import robotlegs.bender.extensions.contextView.ContextView;
 import robotlegs.bender.framework.api.IContext;

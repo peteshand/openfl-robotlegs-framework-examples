@@ -26,9 +26,8 @@
 	<source path="C:/_projects/Imagination/imag-syd-as3/core/src" />
 	<source path="C:/_projects/Imagination/imag-syd-as3/robotlegs-extensions-Imag-Hx/src" />
 	
-	<source path="C:/_projects/2015/OpenFL/openfl/openfl" />
 	
-	<!--<haxelib name="openfl" />-->
+	<haxelib name="openfl" />
 	<haxelib name="swiftsuspenders" />
 	<haxelib name="robotlegs" />
 	<haxelib name="msignal" />
@@ -42,8 +41,8 @@
 	<haxedef name="dom" if="html5" />
 	
 	<!-- optimize output -->
-	<haxeflag name="-dce full" />
-	<!--<haxeflag name="-dce std" />--> 
+	<!--<haxeflag name="-dce full" />-->
+	<haxeflag name="-dce std" /> 
 	<!--<haxeflag name="-dce no" />--> 
 	
 </project>

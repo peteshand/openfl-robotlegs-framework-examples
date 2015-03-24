@@ -6,7 +6,7 @@
 	<meta title="BasicRobotlegs" package="com.imagination.robotlegs.basic.BasicRobotlegs" version="1.0.0" company="P.J.Shand" />
 	
 	<!-- output -->
-	<app main="com.imagination.robotlegs.basic.Main" file="BasicRobotlegs" path="bin" />
+	<app main="com.imagination.robotlegs.basic.away3d.Main" file="BasicRobotlegs" path="bin" />
 	
 	<window background="#000000" fps="60" />
 	
@@ -25,6 +25,7 @@
 	<haxelib name="swiftsuspenders" />
 	<haxelib name="robotlegs" />
 	<haxelib name="away3d" />
+	<haxelib name="msignal" />
 	
 	<!-- assets -->
 	<icon path="assets/openfl.svg" />

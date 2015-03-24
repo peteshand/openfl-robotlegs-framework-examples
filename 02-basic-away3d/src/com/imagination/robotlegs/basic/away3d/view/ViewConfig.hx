@@ -3,7 +3,6 @@ package com.imagination.robotlegs.basic.away3d.view;
 import openfl.display3D.Context3DProfile;
 import robotlegs.bender.extensions.contextView.ContextView;
 import robotlegs.bender.extensions.mediatorMap.api.IMediatorMap;
-import robotlegs.bender.extensions.signalCommandMap.api.ISignalCommandMap;
 import robotlegs.bender.extensions.stage3D.base.api.IRenderer;
 import robotlegs.bender.extensions.stage3D.base.api.IStack;
 import robotlegs.bender.framework.api.IConfig;
@@ -27,7 +26,6 @@ import com.imagination.robotlegs.basic.away3d.view.away3d.display.ExampleAwayObj
 class ViewConfig implements IConfig 
 {
 	@inject public var context:IContext;
-	@inject public var commandMap:ISignalCommandMap;
 	@inject public var mediatorMap:IMediatorMap;
 	@inject public var stack:IStack;
 	@inject public var renderer:IRenderer;

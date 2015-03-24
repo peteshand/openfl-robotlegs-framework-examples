@@ -1,5 +1,9 @@
 package com.imagination.robotlegs.away3d.view;
 
+import com.imagination.robotlegs.away3d.view.openfl.display.SubView;
+import com.imagination.robotlegs.away3d.view.openfl.display.SubViewMediator;
+import com.imagination.robotlegs.away3d.view.openfl.MainView;
+import com.imagination.robotlegs.away3d.view.openfl.MainViewMediator;
 import openfl.display3D.Context3DProfile;
 import robotlegs.bender.extensions.contextView.ContextView;
 import robotlegs.bender.extensions.mediatorMap.api.IMediatorMap;
@@ -59,6 +63,9 @@ class ViewConfig implements IConfig
 	
 	private function mapMediators():Void 
 	{
+		mediatorMap.map(MainView).toMediator(MainViewMediator);
+		mediatorMap.map(SubView).toMediator(SubViewMediator);
+		
 		mediatorMap.map(MainAwayLayer).toMediator(MainAwayLayerMediator);
 		mediatorMap.map(ExampleAwayObject).toMediator(ExampleAwayObjectMediator);
 	}
@@ -66,5 +73,7 @@ class ViewConfig implements IConfig
 	private function initView():Void 
 	{
 		stack.addLayer(MainAwayLayer);
+		trace("MainAwayLayer");
+		contextView.view.addChild(new MainView());
 	}
 }

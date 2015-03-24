@@ -39,8 +39,8 @@
 	<haxedef name="dom" if="html5" />
 	
 	<!-- optimize output -->
-	<haxeflag name="-dce full" />
-	<!--<haxeflag name="-dce std" />--> 
+	<!--<haxeflag name="-dce full" />-->
+	<haxeflag name="-dce std" />
 	<!--<haxeflag name="-dce no" />--> 
 	
 </project>

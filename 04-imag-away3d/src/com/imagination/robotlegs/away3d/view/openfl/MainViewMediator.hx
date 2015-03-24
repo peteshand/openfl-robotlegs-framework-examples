@@ -1,7 +1,7 @@
 package com.imagination.robotlegs.away3d.view.openfl;
 
 import com.imagination.robotlegs.away3d.events.AppEvent;
-import com.imagination.robotlegs.away3d.services.ExampleService;
+import com.imagination.robotlegs.away3d.services.example.ExampleService;
 import openfl.events.Event;
 import openfl.events.IEventDispatcher;
 import robotlegs.bender.bundles.mvcs.Mediator;
