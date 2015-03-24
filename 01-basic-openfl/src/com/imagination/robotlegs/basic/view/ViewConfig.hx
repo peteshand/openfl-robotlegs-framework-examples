@@ -1,5 +1,7 @@
 package com.imagination.robotlegs.basic.view;
 
+import com.imagination.robotlegs.basic.view.openfl.display.SubView;
+import com.imagination.robotlegs.basic.view.openfl.display.SubViewMediator;
 import robotlegs.bender.extensions.contextView.ContextView;
 import robotlegs.bender.extensions.mediatorMap.api.IMediatorMap;
 import robotlegs.bender.extensions.eventCommandMap.api.IEventCommandMap;
@@ -41,6 +43,7 @@ class ViewConfig implements IConfig
 	private function mapMediators():Void 
 	{
 		mediatorMap.map(MainView).toMediator(MainViewMediator);
+		mediatorMap.map(SubView).toMediator(SubViewMediator);
 	}
 	
 	private function initView():Void 

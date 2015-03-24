@@ -1,6 +1,6 @@
 package com.imagination.robotlegs.basic.view.openfl.display;
 
-import com.imagination.robotlegs.basic.services.ExampleService;
+import com.imagination.robotlegs.basic.services.example.ExampleService;
 import robotlegs.bender.bundles.mvcs.Mediator;
 
 /**

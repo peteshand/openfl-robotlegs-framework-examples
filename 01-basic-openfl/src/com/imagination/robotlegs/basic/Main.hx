@@ -24,7 +24,7 @@ class Main extends Sprite
 	public function new() 
 	{
 		super();
-		
+		trace("Main");
 		_context = new Context()
 			.install(MVCSBundle)
 			.configure([CommandConfig, ModelConfig, ServiceConfig, ViewConfig])

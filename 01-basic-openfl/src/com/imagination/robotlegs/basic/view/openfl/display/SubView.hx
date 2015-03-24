@@ -20,7 +20,8 @@ class SubView extends Sprite
 	
 	public function initialize() 
 	{
-		
+		this.graphics.beginFill(0x77EEAA);
+		this.graphics.drawRect(100, 0, 100, 100);
 	}
 	
 }
