@@ -44,7 +44,7 @@ class MainAwayLayer extends AwayLayer
 	
 	private function Update(e:Event):Void 
 	{
-		exampleAwayObject.rotationY += 1;
+		exampleAwayObject.update();
 	}
 	
 	override public function process():Void

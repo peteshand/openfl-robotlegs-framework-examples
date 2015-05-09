@@ -1,15 +1,15 @@
 package com.imagination.robotlegs.starling.view.starling;
+
 import openfl.Assets;
 import openfl.display.BitmapData;
-import openfl.display.Sprite;
-import openfl.events.Event;
+import openfl.Vector;
 import robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer;
 import starling.core.Starling;
+import starling.display.MovieClip;
 import starling.display.Quad;
-import starling.extensions.ParticleSystem;
-import starling.extensions.PDParticleSystem;
+import starling.utils.AssetManager;
 import starling.textures.Texture;
-
+import starling.events.EnterFrameEvent;
 
 
 /**
@@ -18,9 +18,9 @@ import starling.textures.Texture;
  */
 class MainStarlingLayer extends StarlingLayer
 {
-	private var mParticleSystem:ParticleSystem;
-	private var broadcast:Sprite;
 	private var time:Float = 0;
+	private var assets:AssetManager;
+	private var mMovies:Vector<MovieClip>;
 	
 	public function new() 
 	{
@@ -29,38 +29,47 @@ class MainStarlingLayer extends StarlingLayer
 	
 	public function initialize():Void 
 	{
-		trace("MainStarlingLayer initialize");
+		assets = new AssetManager();
 		
-		var quad:Quad = new Quad(200, 200, 0xFFFF0000);
-		addChild(quad);
+		var atlas_xml:Xml = Xml.parse(Assets.getText("img/atlas.xml"));
+		var atlas:BitmapData = Assets.getBitmapData("img/atlas.png");
 		
-		/*var psConfig:Xml = Xml.parse(Assets.getText("img/stars.pex"));
-		var starsParticle:BitmapData = Assets.getBitmapData("img/stars.png");
+		assets.enqueueWithName(atlas, "atlas");
+		assets.enqueueWithName(atlas_xml, "atlas_xml");
 		
-		var psTexture:Texture = Texture.fromBitmapData(starsParticle);
-
-		mParticleSystem = new PDParticleSystem(psConfig, psTexture);
-		mParticleSystem.emitterX = 400;
-		mParticleSystem.emitterY = 300;
-		mParticleSystem.maxCapacity = 100;
-		mParticleSystem.emissionRate = 50;
-		this.addChild(mParticleSystem);
-
-		//Starling.Juggler.add(mParticleSystem);
-		
-		mParticleSystem.start();
-		
-		//
-		*/
-		broadcast = new Sprite();
-		broadcast.addEventListener(Event.ENTER_FRAME, Update);
+		assets.loadQueue(function(ratio:Float):Void
+		{
+			if (ratio == 1) onComplete(assets);
+		});
 	}
 	
-	private function Update(e:Event):Void 
+	function onComplete(assets:AssetManager) 
 	{
-		//mParticleSystem.advanceTime(time);
-		//time++;
+		var frames:Vector<Texture> = assets.getTextures("flight");
+		mMovies = new Vector<MovieClip>();
+		var num:Int = 8;
+		for (i in 0...num) 
+		{
+			var t:Float = i / num;
+			var mMovie:MovieClip = new MovieClip(frames, 15);
+			mMovie.currentFrame = Math.floor(frames.length * Math.random());
+			mMovie.y = -30 + (t * 460);
+			mMovie.x = (i * (350 + (Math.random() * 50))) % 960;
+			addChild(mMovie);
+			Starling.Juggler.add(mMovie);
+			
+			mMovies.push(mMovie);
+		}
 		
-		//trace("numChildren = " + this.numChildren);
+		addEventListener(EnterFrameEvent.ENTER_FRAME, Update);
+	}
+	
+	private function Update(e:EnterFrameEvent):Void 
+	{
+		for (i in 0...mMovies.length) 
+		{
+			mMovies[i].x += 1;
+			if (mMovies[i].x > 960) mMovies[i].x = -200;
+		}
 	}
 }

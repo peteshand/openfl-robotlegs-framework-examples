@@ -45,6 +45,12 @@ class DefaultAssetLibrary extends AssetLibrary {
 		
 		#if flash
 		
+		className.set ("img/atlas.png", __ASSET__img_atlas_png);
+		type.set ("img/atlas.png", AssetType.IMAGE);
+		className.set ("img/atlas.xml", __ASSET__img_atlas_xml);
+		type.set ("img/atlas.xml", AssetType.TEXT);
+		className.set ("img/landscape.jpg", __ASSET__img_landscape_jpg);
+		type.set ("img/landscape.jpg", AssetType.IMAGE);
 		className.set ("img/stars.pex", __ASSET__img_stars_pex);
 		type.set ("img/stars.pex", AssetType.TEXT);
 		className.set ("img/stars.png", __ASSET__img_stars_png);
@@ -58,6 +64,18 @@ class DefaultAssetLibrary extends AssetLibrary {
 		#elseif html5
 		
 		var id;
+		id = "img/atlas.png";
+		path.set (id, id);
+		
+		type.set (id, AssetType.IMAGE);
+		id = "img/atlas.xml";
+		path.set (id, id);
+		
+		type.set (id, AssetType.TEXT);
+		id = "img/landscape.jpg";
+		path.set (id, id);
+		
+		type.set (id, AssetType.IMAGE);
 		id = "img/stars.pex";
 		path.set (id, id);
 		
@@ -92,11 +110,23 @@ class DefaultAssetLibrary extends AssetLibrary {
 		
 		
 		
+		
+		
+		
 		#end
 		
 		#if (windows || mac || linux)
 		
 		var useManifest = false;
+		
+		className.set ("img/atlas.png", __ASSET__img_atlas_png);
+		type.set ("img/atlas.png", AssetType.IMAGE);
+		
+		className.set ("img/atlas.xml", __ASSET__img_atlas_xml);
+		type.set ("img/atlas.xml", AssetType.TEXT);
+		
+		className.set ("img/landscape.jpg", __ASSET__img_landscape_jpg);
+		type.set ("img/landscape.jpg", AssetType.IMAGE);
 		
 		className.set ("img/stars.pex", __ASSET__img_stars_pex);
 		type.set ("img/stars.pex", AssetType.TEXT);
@@ -710,6 +740,9 @@ class DefaultAssetLibrary extends AssetLibrary {
 #if !display
 #if flash
 
+@:keep @:bind #if display private #end class __ASSET__img_atlas_png extends flash.display.BitmapData { public function new () { super (0, 0, true, 0); } }
+@:keep @:bind #if display private #end class __ASSET__img_atlas_xml extends flash.utils.ByteArray { }
+@:keep @:bind #if display private #end class __ASSET__img_landscape_jpg extends flash.display.BitmapData { public function new () { super (0, 0, true, 0); } }
 @:keep @:bind #if display private #end class __ASSET__img_stars_pex extends flash.utils.ByteArray { }
 @:keep @:bind #if display private #end class __ASSET__img_stars_png extends flash.display.BitmapData { public function new () { super (0, 0, true, 0); } }
 @:keep @:bind #if display private #end class __ASSET__xml_config_xml extends flash.utils.ByteArray { }
@@ -724,6 +757,9 @@ class DefaultAssetLibrary extends AssetLibrary {
 
 
 
+
+
+
 #else
 
 
@@ -731,6 +767,9 @@ class DefaultAssetLibrary extends AssetLibrary {
 #if (windows || mac || linux)
 
 
+@:image("assets/img/atlas.png") #if display private #end class __ASSET__img_atlas_png extends lime.graphics.Image {}
+@:file("assets/img/atlas.xml") #if display private #end class __ASSET__img_atlas_xml extends lime.utils.ByteArray {}
+@:image("assets/img/landscape.jpg") #if display private #end class __ASSET__img_landscape_jpg extends lime.graphics.Image {}
 @:file("assets/img/stars.pex") #if display private #end class __ASSET__img_stars_pex extends lime.utils.ByteArray {}
 @:image("assets/img/stars.png") #if display private #end class __ASSET__img_stars_png extends lime.graphics.Image {}
 @:file("assets/xml/config.xml") #if display private #end class __ASSET__xml_config_xml extends lime.utils.ByteArray {}

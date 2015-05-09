@@ -1,5 +1,7 @@
 package com.imagination.robotlegs.starling.view;
 
+import com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2;
+import com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2;
 import com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer;
 import com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayerMediator;
 import com.imagination.robotlegs.starling.view.starling.MainStarlingLayerMediator;
@@ -64,11 +66,11 @@ class ViewConfig implements IConfig
 	private function mapMediators():Void 
 	{
 		mediatorMap.map(MainAwayLayer).toMediator(MainAwayLayerMediator);
+		mediatorMap.map(MainAwayLayer2).toMediator(MainAwayLayerMediator2);
 		mediatorMap.map(ExampleAwayObject).toMediator(ExampleAwayObjectMediator);
 		
 		mediatorMap.map(MainStarlingLayer).toMediator(MainStarlingLayerMediator);
 		mediatorMap.map(CheckerboardStarlingLayer).toMediator(CheckerboardStarlingLayerMediator);
-		
 	}
 	
 	private function initView():Void 
@@ -76,5 +78,6 @@ class ViewConfig implements IConfig
 		stack.addLayer(CheckerboardStarlingLayer);
 		stack.addLayer(MainAwayLayer);
 		stack.addLayer(MainStarlingLayer);
+		stack.addLayer(MainAwayLayer2);
 	}
 }

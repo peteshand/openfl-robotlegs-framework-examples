@@ -34,6 +34,18 @@ class ApplicationMain {
 		var types = [];
 		
 		
+		urls.push ("img/atlas.png");
+		types.push (lime.Assets.AssetType.IMAGE);
+		
+		
+		urls.push ("img/atlas.xml");
+		types.push (lime.Assets.AssetType.TEXT);
+		
+		
+		urls.push ("img/landscape.jpg");
+		types.push (lime.Assets.AssetType.IMAGE);
+		
+		
 		urls.push ("img/stars.pex");
 		types.push (lime.Assets.AssetType.TEXT);
 		

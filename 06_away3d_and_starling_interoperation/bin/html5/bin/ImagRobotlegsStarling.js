@@ -26,6 +26,12 @@ ApplicationMain.create = function() {
 	ApplicationMain.preloader.create(ApplicationMain.config);
 	var urls = [];
 	var types = [];
+	urls.push("img/atlas.png");
+	types.push("IMAGE");
+	urls.push("img/atlas.xml");
+	types.push("TEXT");
+	urls.push("img/landscape.jpg");
+	types.push("IMAGE");
 	urls.push("img/stars.pex");
 	types.push("TEXT");
 	urls.push("img/stars.png");
@@ -317,7 +323,11 @@ openfl.display.DisplayObject.prototype = $extend(openfl.events.EventDispatcher.p
 	,__getBounds: function(rect,matrix) {
 		if(this.__graphics != null) this.__graphics.__getBounds(rect,matrix != null?matrix:this.__worldTransform);
 	}
+	,__getCursor: function() {
+		return null;
+	}
 	,__getInteractive: function(stack) {
+		return false;
 	}
 	,__getLocalBounds: function(rect) {
 		this.__getTransform();
@@ -704,8 +714,11 @@ openfl.display.InteractiveObject.prototype = $extend(openfl.display.DisplayObjec
 		return false;
 	}
 	,__getInteractive: function(stack) {
-		stack.push(this);
-		if(this.parent != null) this.parent.__getInteractive(stack);
+		if(stack != null) {
+			stack.push(this);
+			if(this.parent != null) this.parent.__getInteractive(stack);
+		}
+		return true;
 	}
 	,__class__: openfl.display.InteractiveObject
 });
@@ -769,7 +782,8 @@ openfl.display.DisplayObjectContainer.prototype = $extend(openfl.display.Interac
 		return false;
 	}
 	,contains: function(child) {
-		return HxOverrides.indexOf(this.__children,child,0) > -1;
+		while(child != this && child != null) child = child.parent;
+		return child == this;
 	}
 	,getChildAt: function(index) {
 		if(index >= 0 && index < this.__children.length) return this.__children[index];
@@ -904,7 +918,18 @@ openfl.display.DisplayObjectContainer.prototype = $extend(openfl.display.Interac
 				}
 			} else if(stack != null) {
 				var length = stack.length;
-				while(--i >= 0) if(this.__children[i].__hitTest(x,y,shapeFlag,stack,interactiveOnly)) {
+				var interactive = false;
+				var hitTest = false;
+				while(--i >= 0) {
+					interactive = this.__children[i].__getInteractive(null);
+					if(interactive || !hitTest) {
+						if(this.__children[i].__hitTest(x,y,shapeFlag,stack,true)) {
+							hitTest = true;
+							if(interactive) break;
+						}
+					}
+				}
+				if(hitTest) {
 					stack.splice(length,0,this);
 					return true;
 				}
@@ -1045,6 +1070,9 @@ openfl.display.Sprite.prototype = $extend(openfl.display.DisplayObjectContainer.
 	,stopDrag: function() {
 		if(this.stage != null) this.stage.__stopDrag(this);
 	}
+	,__getCursor: function() {
+		if(this.buttonMode && this.useHandCursor) return lime.ui.MouseCursor.POINTER; else return null;
+	}
 	,__hitTest: function(x,y,shapeFlag,stack,interactiveOnly) {
 		if(!this.get_visible() || interactiveOnly && !this.mouseEnabled) return false;
 		var length = 0;
@@ -1155,6 +1183,15 @@ var DefaultAssetLibrary = function() {
 	this.className = new haxe.ds.StringMap();
 	lime.AssetLibrary.call(this);
 	var id;
+	id = "img/atlas.png";
+	this.path.set(id,id);
+	this.type.set(id,"IMAGE");
+	id = "img/atlas.xml";
+	this.path.set(id,id);
+	this.type.set(id,"TEXT");
+	id = "img/landscape.jpg";
+	this.path.set(id,id);
+	this.type.set(id,"IMAGE");
 	id = "img/stars.pex";
 	this.path.set(id,id);
 	this.type.set(id,"TEXT");
@@ -2699,7 +2736,7 @@ away3d.animators.data.AnimationSubGeometry.prototype = {
 		var buffer = this._vertexBuffer.data[contextIndex];
 		if(buffer == null || this._bufferContext.data[contextIndex] != context) {
 			var this1 = this._vertexBuffer;
-			var value = context.createVertexBuffer(this._numVertices,this._totalLenOfOneVertex);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,this._totalLenOfOneVertex);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -2769,7 +2806,7 @@ away3d.animators.data.AnimationSubGeometry.prototype = {
 				}
 			}
 			vertexBuffer = value;
-			if(vertexBuffer != null) vertexBuffer.dispose();
+			if(vertexBuffer != null) away3d.core.managers.Stage3DProxy.disposeVertexBuffer(vertexBuffer);
 		}
 	}
 	,invalidateBuffer: function() {
@@ -6340,9 +6377,11 @@ away3d.containers.Scene3D.prototype = $extend(openfl.events.EventDispatcher.prot
 	,__class__: away3d.containers.Scene3D
 	,__properties__: {get_numChildren:"get_numChildren",set_partition:"set_partition",get_partition:"get_partition"}
 });
-away3d.containers.View3D = function(scene,camera,renderer,forceSoftware,profile) {
+away3d.containers.View3D = function(scene,camera,renderer,forceSoftware,profile,contextIndex) {
+	if(contextIndex == null) contextIndex = -1;
 	if(profile == null) profile = "baseline";
 	if(forceSoftware == null) forceSoftware = false;
+	this._contextIndex = -1;
 	this._layeredView = false;
 	this._width = 0;
 	this._height = 0;
@@ -6366,6 +6405,7 @@ away3d.containers.View3D = function(scene,camera,renderer,forceSoftware,profile)
 	if(renderer != null) this._renderer = renderer; else this._renderer = new away3d.core.render.DefaultRenderer();
 	this._depthRenderer = new away3d.core.render.DepthRenderer();
 	this._forceSoftware = forceSoftware;
+	this._contextIndex = contextIndex;
 	this._entityCollector = this._renderer.createEntityCollector();
 	this._entityCollector.set_camera(this._camera);
 	this._scissorRect = new openfl.geom.Rectangle();
@@ -6422,6 +6462,7 @@ away3d.containers.View3D.prototype = $extend(openfl.display.Sprite.prototype,{
 	,_profile: null
 	,_layeredView: null
 	,_callbackMethod: null
+	,_contextIndex: null
 	,get_depthPrepass: function() {
 		return this._depthPrepass;
 	}
@@ -6475,17 +6516,7 @@ away3d.containers.View3D.prototype = $extend(openfl.display.Sprite.prototype,{
 		this.addChild(this._hitField);
 	}
 	,get_filters3d: function() {
-		if(this._filter3DRenderer != null) {
-			var this1 = this._filter3DRenderer.get_filters();
-			var value = new Array();
-			var _g1 = 0;
-			var _g = this1.data.length;
-			while(_g1 < _g) {
-				var i = _g1++;
-				value.push(this1.data[i]);
-			}
-			return value;
-		} else return null;
+		if(this._filter3DRenderer != null) return this._filter3DRenderer.get_filters(); else return null;
 	}
 	,set_filters3d: function(value) {
 		if(value != null && value.length == 0) value = null;
@@ -6494,50 +6525,10 @@ away3d.containers.View3D.prototype = $extend(openfl.display.Sprite.prototype,{
 			this._filter3DRenderer = null;
 		} else if(this._filter3DRenderer == null && value != null) {
 			this._filter3DRenderer = new away3d.core.render.Filter3DRenderer(this.get_stage3DProxy());
-			this._filter3DRenderer.set_filters((function($this) {
-				var $r;
-				var vectorData = new openfl.VectorData();
-				vectorData.length = value.length;
-				vectorData.fixed = true;
-				{
-					var vec;
-					var this1;
-					this1 = new Array(value.length);
-					vec = this1;
-					var _g1 = 0;
-					var _g = value.length;
-					while(_g1 < _g) {
-						var i = _g1++;
-						vec[i] = value[i];
-					}
-					vectorData.data = vec;
-				}
-				$r = vectorData;
-				return $r;
-			}(this)));
+			this._filter3DRenderer.set_filters(value);
 		}
 		if(this._filter3DRenderer != null) {
-			this._filter3DRenderer.set_filters((function($this) {
-				var $r;
-				var vectorData1 = new openfl.VectorData();
-				vectorData1.length = value.length;
-				vectorData1.fixed = true;
-				{
-					var vec1;
-					var this2;
-					this2 = new Array(value.length);
-					vec1 = this2;
-					var _g11 = 0;
-					var _g2 = value.length;
-					while(_g11 < _g2) {
-						var i1 = _g11++;
-						vec1[i1] = value[i1];
-					}
-					vectorData1.data = vec1;
-				}
-				$r = vectorData1;
-				return $r;
-			}(this)));
+			this._filter3DRenderer.set_filters(value);
 			this._requireDepthRender = this._filter3DRenderer.get_requireDepthRender();
 		} else {
 			this._requireDepthRender = false;
@@ -6927,7 +6918,7 @@ away3d.containers.View3D.prototype = $extend(openfl.display.Sprite.prototype,{
 		if(this._addedToStage) return;
 		this._addedToStage = true;
 		if(this._stage3DProxy == null) {
-			this._stage3DProxy = away3d.core.managers.Stage3DManager.getInstance(this.stage).getFreeStage3DProxy(this._forceSoftware,this._profile);
+			if(this._contextIndex == -1) this._stage3DProxy = away3d.core.managers.Stage3DManager.getInstance(this.stage).getFreeStage3DProxy(this._forceSoftware,this._profile); else this._stage3DProxy = away3d.core.managers.Stage3DManager.getInstance(this.stage).getStage3DProxy(this._contextIndex,this._forceSoftware,this._profile);
 			this._stage3DProxy.addEventListener(away3d.events.Stage3DEvent.VIEWPORT_UPDATED,$bind(this,this.onViewportUpdated));
 			if(this._callbackMethod != null) this._stage3DProxy.setRenderCallback(this._callbackMethod);
 		}
@@ -7110,7 +7101,7 @@ away3d.core.base.SubGeometryBase.prototype = {
 		var context = stage3DProxy._context3D;
 		if(this._indexBuffer.data[contextIndex] == null || this._indexBufferContext.data[contextIndex] != context) {
 			var this1 = this._indexBuffer;
-			var value = context.createIndexBuffer(this._numIndices);
+			var value = stage3DProxy.createIndexBuffer(this._numIndices);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -7994,7 +7985,7 @@ away3d.core.base.SubGeometryBase.prototype = {
 		var i = 0;
 		while(i < 8) {
 			if(buffers.data[i] != null) {
-				buffers.data[i].dispose();
+				away3d.core.managers.Stage3DProxy.disposeIndexBuffer(buffers.data[i]);
 				if(!buffers.fixed) {
 					if(i >= buffers.length) buffers.length = i + 1;
 					if(buffers.data.length < buffers.length) {
@@ -8015,7 +8006,7 @@ away3d.core.base.SubGeometryBase.prototype = {
 		var i = 0;
 		while(i < 8) {
 			if(buffers.data[i] != null) {
-				buffers.data[i].dispose();
+				away3d.core.managers.Stage3DProxy.disposeVertexBuffer(buffers.data[i]);
 				if(!buffers.fixed) {
 					if(i >= buffers.length) buffers.length = i + 1;
 					if(buffers.data.length < buffers.length) {
@@ -8560,7 +8551,7 @@ away3d.core.base.CompactSubGeometry.prototype = $extend(away3d.core.base.SubGeom
 		var contextIndex = stage3DProxy._stage3DIndex;
 		var context = stage3DProxy._context3D;
 		if(contextIndex != this._contextIndex) this.updateActiveBuffer(contextIndex);
-		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context);
+		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context,stage3DProxy);
 		if(this._activeDataInvalid) this.uploadData(contextIndex);
 		context.setVertexBufferAt(index,this._activeBuffer,0,openfl.display3D.Context3DVertexBufferFormat.FLOAT_3);
 	}
@@ -8572,7 +8563,7 @@ away3d.core.base.CompactSubGeometry.prototype = $extend(away3d.core.base.SubGeom
 			this.invalidateBuffers(this._vertexDataInvalid);
 		}
 		if(contextIndex != this._contextIndex) this.updateActiveBuffer(contextIndex);
-		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context);
+		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context,stage3DProxy);
 		if(this._activeDataInvalid) this.uploadData(contextIndex);
 		context.setVertexBufferAt(index,this._activeBuffer,9,openfl.display3D.Context3DVertexBufferFormat.FLOAT_2);
 	}
@@ -8580,7 +8571,7 @@ away3d.core.base.CompactSubGeometry.prototype = $extend(away3d.core.base.SubGeom
 		var contextIndex = stage3DProxy._stage3DIndex;
 		var context = stage3DProxy._context3D;
 		if(contextIndex != this._contextIndex) this.updateActiveBuffer(contextIndex);
-		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context);
+		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context,stage3DProxy);
 		if(this._activeDataInvalid) this.uploadData(contextIndex);
 		context.setVertexBufferAt(index,this._activeBuffer,11,openfl.display3D.Context3DVertexBufferFormat.FLOAT_2);
 	}
@@ -8605,7 +8596,7 @@ away3d.core.base.CompactSubGeometry.prototype = $extend(away3d.core.base.SubGeom
 		var contextIndex = stage3DProxy._stage3DIndex;
 		var context = stage3DProxy._context3D;
 		if(contextIndex != this._contextIndex) this.updateActiveBuffer(contextIndex);
-		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context);
+		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context,stage3DProxy);
 		if(this._activeDataInvalid) this.uploadData(contextIndex);
 		context.setVertexBufferAt(index,this._activeBuffer,3,openfl.display3D.Context3DVertexBufferFormat.FLOAT_3);
 	}
@@ -8613,13 +8604,13 @@ away3d.core.base.CompactSubGeometry.prototype = $extend(away3d.core.base.SubGeom
 		var contextIndex = stage3DProxy._stage3DIndex;
 		var context = stage3DProxy._context3D;
 		if(contextIndex != this._contextIndex) this.updateActiveBuffer(contextIndex);
-		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context);
+		if(this._activeBuffer == null || this._activeContext != context) this.createBuffer(contextIndex,context,stage3DProxy);
 		if(this._activeDataInvalid) this.uploadData(contextIndex);
 		context.setVertexBufferAt(index,this._activeBuffer,6,openfl.display3D.Context3DVertexBufferFormat.FLOAT_3);
 	}
-	,createBuffer: function(contextIndex,context) {
+	,createBuffer: function(contextIndex,context,stage3DProxy) {
 		var this1 = this._vertexBuffer;
-		var value = this._activeBuffer = context.createVertexBuffer(this._numVertices,13);
+		var value = this._activeBuffer = stage3DProxy.createVertexBuffer(this._numVertices,13);
 		if(!this1.fixed) {
 			if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 			if(this1.data.length < this1.length) {
@@ -9597,7 +9588,7 @@ away3d.core.base.SkinnedSubGeometry.prototype = $extend(away3d.core.base.Compact
 		var context = stage3DProxy._context3D;
 		if(this._jointWeightContext.data[contextIndex] != context || this._jointWeightsBuffer.data[contextIndex] == null) {
 			var this1 = this._jointWeightsBuffer;
-			var value = context.createVertexBuffer(this._numVertices,this._jointsPerVertex);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,this._jointsPerVertex);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -9660,7 +9651,7 @@ away3d.core.base.SkinnedSubGeometry.prototype = $extend(away3d.core.base.Compact
 		var context = stage3DProxy._context3D;
 		if(this._jointIndexContext.data[contextIndex] != context || this._jointIndexBuffer.data[contextIndex] == null) {
 			var this1 = this._jointIndexBuffer;
-			var value = context.createVertexBuffer(this._numVertices,this._jointsPerVertex);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,this._jointsPerVertex);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -10111,7 +10102,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 		var context = stage3DProxy._context3D;
 		if(this._vertexBuffer.data[contextIndex] == null || this._vertexBufferContext.data[contextIndex] != context) {
 			var this1 = this._vertexBuffer;
-			var value = context.createVertexBuffer(this._numVertices,3);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,3);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -10175,7 +10166,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 		if(this._autoGenerateUVs && this._uvsDirty) this._uvs = this.updateDummyUVs(this._uvs);
 		if(this._uvBuffer.data[contextIndex] == null || this._uvBufferContext.data[contextIndex] != context) {
 			var this1 = this._uvBuffer;
-			var value = context.createVertexBuffer(this._numVertices,2);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,2);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -10238,7 +10229,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 		var context = stage3DProxy._context3D;
 		if(this._secondaryUvBuffer.data[contextIndex] == null || this._secondaryUvBufferContext.data[contextIndex] != context) {
 			var this1 = this._secondaryUvBuffer;
-			var value = context.createVertexBuffer(this._numVertices,2);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,2);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -10302,7 +10293,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 		if(this._autoDeriveVertexNormals && this._vertexNormalsDirty) this._vertexNormals = this.updateVertexNormals(this._vertexNormals);
 		if(this._vertexNormalBuffer.data[contextIndex] == null || this._vertexNormalBufferContext.data[contextIndex] != context) {
 			var this1 = this._vertexNormalBuffer;
-			var value = context.createVertexBuffer(this._numVertices,3);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,3);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -10366,7 +10357,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 		if(this._vertexTangentsDirty) this._vertexTangents = this.updateVertexTangents(this._vertexTangents);
 		if(this._vertexTangentBuffer.data[contextIndex] == null || this._vertexTangentBufferContext.data[contextIndex] != context) {
 			var this1 = this._vertexTangentBuffer;
-			var value = context.createVertexBuffer(this._numVertices,3);
+			var value = stage3DProxy.createVertexBuffer(this._numVertices,3);
 			if(!this1.fixed) {
 				if(contextIndex >= this1.length) this1.length = contextIndex + 1;
 				if(this1.data.length < this1.length) {
@@ -10636,7 +10627,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 	,disposeForStage3D: function(stage3DProxy) {
 		var index = stage3DProxy._stage3DIndex;
 		if(this._vertexBuffer.data[index] != null) {
-			this._vertexBuffer.data[index].dispose();
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._vertexBuffer.data[index]);
 			var this1 = this._vertexBuffer;
 			if(!this1.fixed) {
 				if(index >= this1.length) this1.length = index + 1;
@@ -10652,7 +10643,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 			this1.data[index] = null;
 		}
 		if(this._uvBuffer.data[index] != null) {
-			this._uvBuffer.data[index].dispose();
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._uvBuffer.data[index]);
 			var this3 = this._uvBuffer;
 			if(!this3.fixed) {
 				if(index >= this3.length) this3.length = index + 1;
@@ -10668,7 +10659,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 			this3.data[index] = null;
 		}
 		if(this._secondaryUvBuffer.data[index] != null) {
-			this._secondaryUvBuffer.data[index].dispose();
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._secondaryUvBuffer.data[index]);
 			var this5 = this._secondaryUvBuffer;
 			if(!this5.fixed) {
 				if(index >= this5.length) this5.length = index + 1;
@@ -10684,7 +10675,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 			this5.data[index] = null;
 		}
 		if(this._vertexNormalBuffer.data[index] != null) {
-			this._vertexNormalBuffer.data[index].dispose();
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._vertexNormalBuffer.data[index]);
 			var this7 = this._vertexNormalBuffer;
 			if(!this7.fixed) {
 				if(index >= this7.length) this7.length = index + 1;
@@ -10700,7 +10691,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 			this7.data[index] = null;
 		}
 		if(this._vertexTangentBuffer.data[index] != null) {
-			this._vertexTangentBuffer.data[index].dispose();
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._vertexTangentBuffer.data[index]);
 			var this9 = this._vertexTangentBuffer;
 			if(!this9.fixed) {
 				if(index >= this9.length) this9.length = index + 1;
@@ -10715,22 +10706,7 @@ away3d.core.base.SubGeometry.prototype = $extend(away3d.core.base.SubGeometryBas
 			}
 			this9.data[index] = null;
 		}
-		if(this._indexBuffer.data[index] != null) {
-			this._indexBuffer.data[index].dispose();
-			var this11 = this._indexBuffer;
-			if(!this11.fixed) {
-				if(index >= this11.length) this11.length = index + 1;
-				if(this11.data.length < this11.length) {
-					var data5;
-					var this12;
-					this12 = new Array(this11.data.length + 10);
-					data5 = this12;
-					haxe.ds._Vector.Vector_Impl_.blit(this11.data,0,data5,0,this11.data.length);
-					this11.data = data5;
-				}
-			}
-			this11.data[index] = null;
-		}
+		if(this._indexBuffer.data[index] != null) away3d.core.managers.Stage3DProxy.disposeIndexBuffer(this._indexBuffer.data[index]);
 	}
 	,get_vertexStride: function() {
 		return 3;
@@ -11224,6 +11200,9 @@ openfl.events.Event.prototype = {
 	,isDefaultPrevented: function() {
 		return this.__isCancelled || this.__isCancelledNow;
 	}
+	,preventDefault: function() {
+		this.__isCancelled = true;
+	}
 	,stopImmediatePropagation: function() {
 		this.__isCancelled = true;
 		this.__isCancelledNow = true;
@@ -11633,9 +11612,9 @@ away3d.core.managers.RTTBufferManager.prototype = $extend(openfl.events.EventDis
 	,dispose: function() {
 		away3d.core.managers.RTTBufferManager._instances.remove(this._stage3DProxy);
 		if(this._indexBuffer != null) {
-			this._indexBuffer.dispose();
-			this._renderToScreenVertexBuffer.dispose();
-			this._renderToTextureVertexBuffer.dispose();
+			away3d.core.managers.Stage3DProxy.disposeIndexBuffer(this._indexBuffer);
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._renderToScreenVertexBuffer);
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._renderToTextureVertexBuffer);
 			this._renderToScreenVertexBuffer = null;
 			this._renderToTextureVertexBuffer = null;
 			this._indexBuffer = null;
@@ -11647,10 +11626,10 @@ away3d.core.managers.RTTBufferManager.prototype = $extend(openfl.events.EventDis
 		var screenVerts;
 		var x;
 		var y;
-		if(this._renderToTextureVertexBuffer == null) this._renderToTextureVertexBuffer = context.createVertexBuffer(4,5);
-		if(this._renderToScreenVertexBuffer == null) this._renderToScreenVertexBuffer = context.createVertexBuffer(4,5);
+		if(this._renderToTextureVertexBuffer == null) this._renderToTextureVertexBuffer = this._stage3DProxy.createVertexBuffer(4,5);
+		if(this._renderToScreenVertexBuffer == null) this._renderToScreenVertexBuffer = this._stage3DProxy.createVertexBuffer(4,5);
 		if(this._indexBuffer == null) {
-			this._indexBuffer = context.createIndexBuffer(6);
+			this._indexBuffer = this._stage3DProxy.createIndexBuffer(6);
 			var tmp_data;
 			var a = [2,1,0,3,2,0];
 			var vectorData = new openfl.VectorData();
@@ -11674,8 +11653,8 @@ away3d.core.managers.RTTBufferManager.prototype = $extend(openfl.events.EventDis
 		this._textureRatioY = y = Math.min(this._viewHeight / this._textureHeight,1);
 		var u1 = (1 - x) * .5;
 		var u2 = (x + 1) * .5;
-		var v1 = (y + 1) * .5;
-		var v2 = (1 - y) * .5;
+		var v1 = 1 - (y + 1) * .5;
+		var v2 = 1 - (1 - y) * .5;
 		var a1 = [-x,-y,u1,v1,0,x,-y,u2,v1,1,x,y,u2,v2,2,-x,y,u1,v2,3];
 		var vectorData1 = new openfl.VectorData();
 		vectorData1.length = a1.length;
@@ -12221,13 +12200,37 @@ away3d.core.managers.Stage3DProxy = function(stage3DIndex,stage3D,stage3DManager
 	this._viewPort = new openfl.geom.Rectangle();
 	this._enableDepthAndStencil = true;
 	openfl.events.EventDispatcher.call(this);
-	this._stage3D.addEventListener(openfl.events.Event.CONTEXT3D_CREATE,$bind(this,this.onContext3DUpdate),false,1000,false);
 	this.forceSoftware = forceSoftware;
 	this._profile = profile;
-	this.requestContext(forceSoftware,this._profile);
+	if(this._stage3D.context3D == null) {
+		this._stage3D.addEventListener(openfl.events.Event.CONTEXT3D_CREATE,$bind(this,this.onContext3DUpdate),false,1000,false);
+		this.requestContext(forceSoftware,this._profile);
+	} else this.onContext3DUpdate(null);
 };
 $hxClasses["away3d.core.managers.Stage3DProxy"] = away3d.core.managers.Stage3DProxy;
 away3d.core.managers.Stage3DProxy.__name__ = ["away3d","core","managers","Stage3DProxy"];
+away3d.core.managers.Stage3DProxy.getVertexBufferCount = function() {
+	return away3d.core.managers.Stage3DProxy._vbCount;
+};
+away3d.core.managers.Stage3DProxy.getIndexBufferCount = function() {
+	return away3d.core.managers.Stage3DProxy._ibCount;
+};
+away3d.core.managers.Stage3DProxy.disposeVertexBuffer = function(vb) {
+	vb.dispose();
+	away3d.core.managers.Stage3DProxy._vbCount--;
+};
+away3d.core.managers.Stage3DProxy.disposeIndexBuffer = function(ib) {
+	ib.dispose();
+	away3d.core.managers.Stage3DProxy._ibCount--;
+};
+away3d.core.managers.Stage3DProxy.uploadVertexBufferFromVector = function(vb,data,startVertex,numVertices) {
+	vb.uploadFromVector(data,startVertex,numVertices);
+	away3d.core.managers.Stage3DProxy._vbUploadCount++;
+};
+away3d.core.managers.Stage3DProxy.uploadIndexBufferFromVector = function(ib,data,startOffset,count) {
+	ib.uploadFromVector(data,startOffset,count);
+	away3d.core.managers.Stage3DProxy._ibUploadCount++;
+};
 away3d.core.managers.Stage3DProxy.__super__ = openfl.events.EventDispatcher;
 away3d.core.managers.Stage3DProxy.prototype = $extend(openfl.events.EventDispatcher.prototype,{
 	_context3D: null
@@ -12491,6 +12494,14 @@ away3d.core.managers.Stage3DProxy.prototype = $extend(openfl.events.EventDispatc
 	,clearDepthBuffer: function() {
 		if(this._context3D == null) return;
 		this._context3D.clear(0,0,0,1,1,0,256);
+	}
+	,createVertexBuffer: function(numVertices,data32PerVertex) {
+		away3d.core.managers.Stage3DProxy._vbCount++;
+		return this._context3D.createVertexBuffer(numVertices,data32PerVertex);
+	}
+	,createIndexBuffer: function(numIndices) {
+		away3d.core.managers.Stage3DProxy._ibCount++;
+		return this._context3D.createIndexBuffer(numIndices);
 	}
 	,__class__: away3d.core.managers.Stage3DProxy
 	,__properties__: {set_touch3DManager:"set_touch3DManager",get_touch3DManager:"get_touch3DManager",set_mouse3DManager:"set_mouse3DManager",get_mouse3DManager:"get_mouse3DManager",set_bufferClear:"set_bufferClear",get_bufferClear:"get_bufferClear",set_visible:"set_visible",get_visible:"get_visible",set_color:"set_color",get_color:"get_color",get_viewPort:"get_viewPort",set_antiAlias:"set_antiAlias",get_antiAlias:"get_antiAlias",set_height:"set_height",get_height:"get_height",set_width:"set_width",get_width:"get_width",set_y:"set_y",get_y:"get_y",set_x:"set_x",get_x:"get_x",get_usesSoftwareRendering:"get_usesSoftwareRendering",get_driverInfo:"get_driverInfo",get_context3D:"get_context3D",get_stage3D:"get_stage3D",get_stage3DIndex:"get_stage3DIndex",set_scissorRect:"set_scissorRect",get_scissorRect:"get_scissorRect",get_renderSurfaceSelector:"get_renderSurfaceSelector",get_renderTarget:"get_renderTarget",set_enableDepthAndStencil:"set_enableDepthAndStencil",get_enableDepthAndStencil:"get_enableDepthAndStencil",get_profile:"get_profile"}
@@ -16478,11 +16489,11 @@ away3d.core.render.BackgroundImageRenderer.prototype = {
 	}
 	,removeBuffers: function() {
 		if(this._vertexBuffer != null) {
-			this._vertexBuffer.dispose();
+			away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this._vertexBuffer);
 			this._vertexBuffer = null;
 			this._program3d.dispose();
 			this._program3d = null;
-			this._indexBuffer.dispose();
+			away3d.core.managers.Stage3DProxy.disposeIndexBuffer(this._indexBuffer);
 			this._indexBuffer = null;
 		}
 	}
@@ -16510,9 +16521,9 @@ away3d.core.render.BackgroundImageRenderer.prototype = {
 	,render: function() {
 	}
 	,initBuffers: function(context) {
-		this._vertexBuffer = context.createVertexBuffer(4,4);
+		this._vertexBuffer = this._stage3DProxy.createVertexBuffer(4,4);
 		this._program3d = context.createProgram();
-		this._indexBuffer = context.createIndexBuffer(6);
+		this._indexBuffer = this._stage3DProxy.createIndexBuffer(6);
 		var inds;
 		var a = [2,1,0,3,2,0];
 		var vectorData = new openfl.VectorData();
@@ -17109,7 +17120,7 @@ away3d.core.render.Filter3DRenderer.prototype = {
 		if(this._filters == null) return null;
 		var i = 0;
 		while(i < this._filters.length) {
-			if(!this._requireDepthRender) this._requireDepthRender = js.Boot.__cast(this._filters.data[i].requireDepthRender != null , Bool);
+			if(!this._requireDepthRender) this._requireDepthRender = this._filters[i].get_requireDepthRender();
 			++i;
 		}
 		this._filterSizesInvalid = true;
@@ -17122,36 +17133,17 @@ away3d.core.render.Filter3DRenderer.prototype = {
 			this._tasks = null;
 			return;
 		}
-		var this1;
-		this1 = new openfl.VectorData();
-		var this2;
-		this2 = new Array(0);
-		this1.data = this2;
-		this1.length = 0;
-		this1.fixed = false;
-		this._tasks = this1;
+		this._tasks = new Array();
 		len = this._filters.length - 1;
 		var filter;
 		var i = 0;
 		while(i <= len) {
-			filter = this._filters.data[i];
-			filter.setRenderTargets(i == len?null:(js.Boot.__cast(this._filters.data[i + 1] , away3d.filters.Filter3DBase)).getMainInputTexture(stage3DProxy),stage3DProxy);
-			var this3 = this._tasks;
-			var a;
-			var this4 = filter.get_tasks();
-			a = this4;
-			var vectorData = new openfl.VectorData();
-			if(a != null) vectorData.length = this3.length + a.length; else vectorData.length = this3.length;
-			vectorData.fixed = false;
-			var this5;
-			this5 = new Array(vectorData.length);
-			vectorData.data = this5;
-			haxe.ds._Vector.Vector_Impl_.blit(this3.data,0,vectorData.data,0,this3.length);
-			if(a != null) haxe.ds._Vector.Vector_Impl_.blit(a.data,0,vectorData.data,this3.length,a.length);
-			this._tasks = vectorData;
+			filter = this._filters[i];
+			filter.setRenderTargets(i == len?null:this._filters[i + 1].getMainInputTexture(stage3DProxy),stage3DProxy);
+			this._tasks = this._tasks.concat(filter.get_tasks());
 			++i;
 		}
-		this._mainInputTexture = this._filters.data[0].getMainInputTexture(stage3DProxy);
+		this._mainInputTexture = this._filters[0].getMainInputTexture(stage3DProxy);
 	}
 	,render: function(stage3DProxy,camera3D,depthTexture) {
 		var len;
@@ -17166,7 +17158,7 @@ away3d.core.render.Filter3DRenderer.prototype = {
 		len = this._filters.length;
 		i = 0;
 		while(i < len) {
-			this._filters.data[i].update(stage3DProxy,camera3D);
+			this._filters[i].update(stage3DProxy,camera3D);
 			++i;
 		}
 		len = this._tasks.length;
@@ -17176,7 +17168,7 @@ away3d.core.render.Filter3DRenderer.prototype = {
 		}
 		i = 0;
 		while(i < len) {
-			task = this._tasks.data[i];
+			task = this._tasks[i];
 			stage3DProxy.setRenderTarget(task.get_target());
 			context.setProgram(task.getProgram3D(stage3DProxy));
 			if(task.get_target() == null) {
@@ -17200,8 +17192,8 @@ away3d.core.render.Filter3DRenderer.prototype = {
 	,updateFilterSizes: function() {
 		var i = 0;
 		while(i < this._filters.length) {
-			this._filters.data[i].textureWidth = this._rttManager.get_textureWidth();
-			this._filters.data[i].textureHeight = this._rttManager.get_textureHeight();
+			this._filters[i].set_textureWidth(this._rttManager.get_textureWidth());
+			this._filters[i].set_textureHeight(this._rttManager.get_textureHeight());
 			++i;
 		}
 		this._filterSizesInvalid = true;
@@ -17940,8 +17932,8 @@ away3d.entities.SegmentSet.prototype = $extend(away3d.entities.Entity.prototype,
 			subSet = this._subSets.data[i];
 			subSet.vertices = null;
 			subSet.indices = null;
-			if(subSet.vertexBuffer != null) subSet.vertexBuffer.dispose();
-			if(subSet.indexBuffer != null) subSet.indexBuffer.dispose();
+			if(subSet.vertexBuffer != null) away3d.core.managers.Stage3DProxy.disposeVertexBuffer(subSet.vertexBuffer);
+			if(subSet.indexBuffer != null) away3d.core.managers.Stage3DProxy.disposeIndexBuffer(subSet.indexBuffer);
 			subSet = null;
 		}
 		var iterator = this._segments.iterator();
@@ -18576,7 +18568,7 @@ away3d.entities.SegmentSet.prototype = $extend(away3d.entities.Entity.prototype,
 	}
 	,getIndexBuffer: function(stage3DProxy) {
 		if(this._activeSubSet.indexContext3D != stage3DProxy.get_context3D() || this._activeSubSet.indexBufferDirty) {
-			this._activeSubSet.indexBuffer = stage3DProxy._context3D.createIndexBuffer(this._activeSubSet.numIndices);
+			this._activeSubSet.indexBuffer = stage3DProxy.createIndexBuffer(this._activeSubSet.numIndices);
 			this._activeSubSet.indexBuffer.uploadFromVector(this._activeSubSet.indices,0,this._activeSubSet.numIndices);
 			this._activeSubSet.indexBufferDirty = false;
 			this._activeSubSet.indexContext3D = stage3DProxy.get_context3D();
@@ -18588,7 +18580,8 @@ away3d.entities.SegmentSet.prototype = $extend(away3d.entities.Entity.prototype,
 		this._activeSubSet = subSet;
 		this._numIndices = subSet.numIndices;
 		if(subSet.vertexContext3D != stage3DProxy.get_context3D() || subSet.vertexBufferDirty) {
-			subSet.vertexBuffer = stage3DProxy._context3D.createVertexBuffer(subSet.numVertices,11);
+			if(subSet.vertexBuffer != null) away3d.core.managers.Stage3DProxy.disposeVertexBuffer(subSet.vertexBuffer);
+			subSet.vertexBuffer = stage3DProxy.createVertexBuffer(subSet.numVertices,11);
 			subSet.vertexBuffer.uploadFromVector(subSet.vertices,0,subSet.numVertices);
 			subSet.vertexBufferDirty = false;
 			subSet.vertexContext3D = stage3DProxy.get_context3D();
@@ -18816,8 +18809,8 @@ away3d.entities.SubSet.prototype = {
 	,lineCount: null
 	,dispose: function() {
 		this.vertices = null;
-		if(this.vertexBuffer != null) this.vertexBuffer.dispose();
-		if(this.indexBuffer != null) this.indexBuffer.dispose();
+		if(this.vertexBuffer != null) away3d.core.managers.Stage3DProxy.disposeVertexBuffer(this.vertexBuffer);
+		if(this.indexBuffer != null) away3d.core.managers.Stage3DProxy.disposeIndexBuffer(this.indexBuffer);
 	}
 	,__class__: away3d.entities.SubSet
 };
@@ -19067,14 +19060,7 @@ away3d.events.TouchEvent3D.prototype = $extend(openfl.events.Event.prototype,{
 });
 away3d.filters = {};
 away3d.filters.Filter3DBase = function() {
-	var this1;
-	this1 = new openfl.VectorData();
-	var this2;
-	this2 = new Array(0);
-	this1.data = this2;
-	this1.length = 0;
-	this1.fixed = false;
-	this._tasks = this1;
+	this._tasks = new Array();
 };
 $hxClasses["away3d.filters.Filter3DBase"] = away3d.filters.Filter3DBase;
 away3d.filters.Filter3DBase.__name__ = ["away3d","filters","Filter3DBase"];
@@ -19087,27 +19073,14 @@ away3d.filters.Filter3DBase.prototype = {
 		return this._requireDepthRender;
 	}
 	,addTask: function(filter) {
-		var this1 = this._tasks;
-		if(!this1.fixed) {
-			this1.length++;
-			if(this1.data.length < this1.length) {
-				var data;
-				var this2;
-				this2 = new Array(this1.data.length + 10);
-				data = this2;
-				haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data,0,this1.data.length);
-				this1.data = data;
-			}
-			this1.data[this1.length - 1] = filter;
-		}
-		this1.length;
+		this._tasks.push(filter);
 		if(!this._requireDepthRender) this._requireDepthRender = filter.get_requireDepthRender();
 	}
 	,get_tasks: function() {
 		return this._tasks;
 	}
 	,getMainInputTexture: function(stage3DProxy) {
-		return this._tasks.data[0].getMainInputTexture(stage3DProxy);
+		return this._tasks[0].getMainInputTexture(stage3DProxy);
 	}
 	,get_textureWidth: function() {
 		return this._textureWidth;
@@ -19116,7 +19089,7 @@ away3d.filters.Filter3DBase.prototype = {
 		this._textureWidth = value;
 		var i = 0;
 		while(i < this._tasks.length) {
-			this._tasks.data[i].set_textureWidth(value);
+			this._tasks[i].set_textureWidth(value);
 			++i;
 		}
 		return value;
@@ -19128,18 +19101,18 @@ away3d.filters.Filter3DBase.prototype = {
 		this._textureHeight = value;
 		var i = 0;
 		while(i < this._tasks.length) {
-			this._tasks.data[i].set_textureHeight(value);
+			this._tasks[i].set_textureHeight(value);
 			++i;
 		}
 		return value;
 	}
 	,setRenderTargets: function(mainTarget,stage3DProxy) {
-		this._tasks.data[this._tasks.length - 1].set_target(mainTarget);
+		this._tasks[this._tasks.length - 1].set_target(mainTarget);
 	}
 	,dispose: function() {
 		var i = 0;
 		while(i < this._tasks.length) {
-			this._tasks.data[i].dispose();
+			this._tasks[i].dispose();
 			++i;
 		}
 	}
@@ -22515,6 +22488,122 @@ away3d.materials.lightpickers.LightPickerBase.prototype = $extend(away3d.library
 	}
 	,__class__: away3d.materials.lightpickers.LightPickerBase
 	,__properties__: $extend(away3d.library.assets.NamedAssetBase.prototype.__properties__,{get_allPickedLights:"get_allPickedLights",get_lightProbeWeights:"get_lightProbeWeights",get_lightProbes:"get_lightProbes",get_castingDirectionalLights:"get_castingDirectionalLights",get_castingPointLights:"get_castingPointLights",get_directionalLights:"get_directionalLights",get_pointLights:"get_pointLights",get_numLightProbes:"get_numLightProbes",get_numCastingPointLights:"get_numCastingPointLights",get_numCastingDirectionalLights:"get_numCastingDirectionalLights",get_numPointLights:"get_numPointLights",get_numDirectionalLights:"get_numDirectionalLights",get_assetType:"get_assetType"})
+});
+away3d.materials.lightpickers.StaticLightPicker = function(lights) {
+	this.set_lights(lights);
+	away3d.materials.lightpickers.LightPickerBase.call(this);
+};
+$hxClasses["away3d.materials.lightpickers.StaticLightPicker"] = away3d.materials.lightpickers.StaticLightPicker;
+away3d.materials.lightpickers.StaticLightPicker.__name__ = ["away3d","materials","lightpickers","StaticLightPicker"];
+away3d.materials.lightpickers.StaticLightPicker.__super__ = away3d.materials.lightpickers.LightPickerBase;
+away3d.materials.lightpickers.StaticLightPicker.prototype = $extend(away3d.materials.lightpickers.LightPickerBase.prototype,{
+	_lights: null
+	,get_lights: function() {
+		return this._lights;
+	}
+	,set_lights: function(value) {
+		var numPointLights = 0;
+		var numDirectionalLights = 0;
+		var numCastingPointLights = 0;
+		var numCastingDirectionalLights = 0;
+		var numLightProbes = 0;
+		var light;
+		if(this._lights != null) this.clearListeners();
+		this._lights = value;
+		this._allPickedLights = value;
+		this._pointLights = new Array();
+		this._castingPointLights = new Array();
+		this._directionalLights = new Array();
+		this._castingDirectionalLights = new Array();
+		this._lightProbes = new Array();
+		var len = value.length;
+		var i = 0;
+		while(i < len) {
+			light = value[i];
+			light.addEventListener(away3d.events.LightEvent.CASTS_SHADOW_CHANGE,$bind(this,this.onCastShadowChange));
+			if(js.Boot.__instanceof(light,away3d.lights.PointLight)) {
+				if(light.get_castsShadows()) this._castingPointLights[numCastingPointLights++] = js.Boot.__cast(light , away3d.lights.PointLight); else this._pointLights[numPointLights++] = js.Boot.__cast(light , away3d.lights.PointLight);
+			} else if(js.Boot.__instanceof(light,away3d.lights.DirectionalLight)) {
+				if(light.get_castsShadows()) this._castingDirectionalLights[numCastingDirectionalLights++] = js.Boot.__cast(light , away3d.lights.DirectionalLight); else this._directionalLights[numDirectionalLights++] = js.Boot.__cast(light , away3d.lights.DirectionalLight);
+			} else if(js.Boot.__instanceof(light,away3d.lights.LightProbe)) this._lightProbes[numLightProbes++] = js.Boot.__cast(light , away3d.lights.LightProbe);
+			++i;
+		}
+		if(this._numDirectionalLights == numDirectionalLights && this._numPointLights == numPointLights && this._numLightProbes == numLightProbes && this._numCastingPointLights == numCastingPointLights && this._numCastingDirectionalLights == numCastingDirectionalLights) return value;
+		this._numDirectionalLights = numDirectionalLights;
+		this._numCastingDirectionalLights = numCastingDirectionalLights;
+		this._numPointLights = numPointLights;
+		this._numCastingPointLights = numCastingPointLights;
+		this._numLightProbes = numLightProbes;
+		this._lightProbeWeights = away3d.utils.ArrayUtils.Prefill(away3d.utils._ArrayUtils.AcceptEither_Impl_.fromA(new Array()),Math.ceil(numLightProbes / 4) * 4,0);
+		this.dispatchEvent(new openfl.events.Event(openfl.events.Event.CHANGE));
+		return value;
+	}
+	,clearListeners: function() {
+		var len = this._lights.length;
+		var i = 0;
+		while(i < len) {
+			this._lights[i].removeEventListener(away3d.events.LightEvent.CASTS_SHADOW_CHANGE,$bind(this,this.onCastShadowChange));
+			++i;
+		}
+	}
+	,onCastShadowChange: function(event) {
+		var light;
+		light = js.Boot.__cast(event.target , away3d.lights.LightBase);
+		if(js.Boot.__instanceof(light,away3d.lights.PointLight)) this.updatePointCasting(js.Boot.__cast(light , away3d.lights.PointLight)); else if(js.Boot.__instanceof(light,away3d.lights.DirectionalLight)) this.updateDirectionalCasting(js.Boot.__cast(light , away3d.lights.DirectionalLight));
+		this.dispatchEvent(new openfl.events.Event(openfl.events.Event.CHANGE));
+	}
+	,updateDirectionalCasting: function(light) {
+		if(light.get_castsShadows()) {
+			--this._numDirectionalLights;
+			++this._numCastingDirectionalLights;
+			this._directionalLights.splice((function($this) {
+				var $r;
+				var x;
+				x = js.Boot.__cast(light , away3d.lights.DirectionalLight);
+				$r = HxOverrides.indexOf($this._directionalLights,x,0);
+				return $r;
+			}(this)),1);
+			this._castingDirectionalLights.push(light);
+		} else {
+			++this._numDirectionalLights;
+			--this._numCastingDirectionalLights;
+			this._castingDirectionalLights.splice((function($this) {
+				var $r;
+				var x1;
+				x1 = js.Boot.__cast(light , away3d.lights.DirectionalLight);
+				$r = HxOverrides.indexOf($this._castingDirectionalLights,x1,0);
+				return $r;
+			}(this)),1);
+			this._directionalLights.push(light);
+		}
+	}
+	,updatePointCasting: function(light) {
+		if(light.get_castsShadows()) {
+			--this._numPointLights;
+			++this._numCastingPointLights;
+			this._pointLights.splice((function($this) {
+				var $r;
+				var x;
+				x = js.Boot.__cast(light , away3d.lights.PointLight);
+				$r = HxOverrides.indexOf($this._pointLights,x,0);
+				return $r;
+			}(this)),1);
+			this._castingPointLights.push(light);
+		} else {
+			++this._numPointLights;
+			--this._numCastingPointLights;
+			this._castingPointLights.splice((function($this) {
+				var $r;
+				var x1;
+				x1 = js.Boot.__cast(light , away3d.lights.PointLight);
+				$r = HxOverrides.indexOf($this._castingPointLights,x1,0);
+				return $r;
+			}(this)),1);
+			this._pointLights.push(light);
+		}
+	}
+	,__class__: away3d.materials.lightpickers.StaticLightPicker
+	,__properties__: $extend(away3d.materials.lightpickers.LightPickerBase.prototype.__properties__,{set_lights:"set_lights",get_lights:"get_lights"})
 });
 away3d.materials.methods = {};
 away3d.materials.methods.ShadingMethodBase = function() {
@@ -30613,7 +30702,7 @@ com.imagination.robotlegs.starling.view.ViewConfig.prototype = {
 	}
 	,init: function() {
 		this.renderer.get_onReady().addOnce($bind(this,this.OnContext3DReady));
-		this.renderer.init("baseline",4);
+		this.renderer.init("baseline",2);
 		this.renderer.start();
 	}
 	,OnContext3DReady: function() {
@@ -30623,12 +30712,16 @@ com.imagination.robotlegs.starling.view.ViewConfig.prototype = {
 	}
 	,mapMediators: function() {
 		this.mediatorMap.map(com.imagination.robotlegs.starling.view.away3d.MainAwayLayer).toMediator(com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator);
+		this.mediatorMap.map(com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2).toMediator(com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2);
 		this.mediatorMap.map(com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject).toMediator(com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObjectMediator);
 		this.mediatorMap.map(com.imagination.robotlegs.starling.view.starling.MainStarlingLayer).toMediator(com.imagination.robotlegs.starling.view.starling.MainStarlingLayerMediator);
 		this.mediatorMap.map(com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer).toMediator(com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayerMediator);
 	}
 	,initView: function() {
 		this.stack.addLayer(com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer);
+		this.stack.addLayer(com.imagination.robotlegs.starling.view.away3d.MainAwayLayer);
+		this.stack.addLayer(com.imagination.robotlegs.starling.view.starling.MainStarlingLayer);
+		this.stack.addLayer(com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2);
 	}
 	,__class__: com.imagination.robotlegs.starling.view.ViewConfig
 };
@@ -30648,7 +30741,7 @@ robotlegs.bender.extensions.stage3D.away3d = {};
 robotlegs.bender.extensions.stage3D.away3d.impl = {};
 robotlegs.bender.extensions.stage3D.away3d.impl.AwayLayer = function(profile) {
 	if(profile == null) profile = "baseline";
-	away3d.containers.View3D.call(this,null,null,null,false,profile);
+	away3d.containers.View3D.call(this,null,null,null,false,profile,0);
 	this.profile = profile;
 	this.get_camera().get_lens().set_far(20000);
 	this.set_backgroundColor(5592405);
@@ -30698,13 +30791,35 @@ com.imagination.robotlegs.starling.view.away3d.MainAwayLayer.prototype = $extend
 		this.stage.addEventListener(openfl.events.Event.ENTER_FRAME,$bind(this,this.Update));
 	}
 	,Update: function(e) {
-		var _g = this.exampleAwayObject;
-		_g.set_rotationY(_g.get_rotationY() + 1);
+		this.exampleAwayObject.update();
 	}
 	,process: function() {
 		this.render();
 	}
 	,__class__: com.imagination.robotlegs.starling.view.away3d.MainAwayLayer
+});
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2 = function(profile) {
+	robotlegs.bender.extensions.stage3D.away3d.impl.AwayLayer.call(this,profile);
+};
+$hxClasses["com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2"] = com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2;
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2.__name__ = ["com","imagination","robotlegs","starling","view","away3d","MainAwayLayer2"];
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2.__super__ = robotlegs.bender.extensions.stage3D.away3d.impl.AwayLayer;
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2.prototype = $extend(robotlegs.bender.extensions.stage3D.away3d.impl.AwayLayer.prototype,{
+	exampleAwayObject: null
+	,initialize: function() {
+		this.exampleAwayObject = new com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject(400,5635993);
+		this.get_scene().addChild(this.exampleAwayObject);
+		this.exampleAwayObject.set_z(-400);
+		this.stage.addEventListener(openfl.events.Event.ENTER_FRAME,$bind(this,this.Update));
+	}
+	,Update: function(e) {
+		this.exampleAwayObject.update();
+	}
+	,process: function() {
+		haxe.Log.trace("process",{ fileName : "MainAwayLayer2.hx", lineNumber : 43, className : "com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2", methodName : "process"});
+		this.render();
+	}
+	,__class__: com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2
 });
 robotlegs.bender.extensions.mediatorMap = {};
 robotlegs.bender.extensions.mediatorMap.api = {};
@@ -30763,20 +30878,81 @@ com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator.prototype =
 	}
 	,__class__: com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator
 });
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2 = function() {
+};
+$hxClasses["com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2"] = com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2;
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2.__name__ = ["com","imagination","robotlegs","starling","view","away3d","MainAwayLayerMediator2"];
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2.__super__ = robotlegs.bender.bundles.mvcs.Mediator;
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2.prototype = $extend(robotlegs.bender.bundles.mvcs.Mediator.prototype,{
+	view: null
+	,initialize: function() {
+		this.view.initialize();
+	}
+	,__class__: com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2
+});
 com.imagination.robotlegs.starling.view.away3d.display = {};
-com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject = function() {
+com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject = function(depth,colour) {
+	if(colour == null) colour = 16777215;
+	if(depth == null) depth = 1000;
 	away3d.containers.ObjectContainer3D.call(this);
+	this.depth = depth;
+	this.colour = colour;
 };
 $hxClasses["com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject"] = com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject;
 com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject.__name__ = ["com","imagination","robotlegs","starling","view","away3d","display","ExampleAwayObject"];
 com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject.__super__ = away3d.containers.ObjectContainer3D;
 com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject.prototype = $extend(away3d.containers.ObjectContainer3D.prototype,{
-	initialize: function() {
-		var geo = new away3d.primitives.CubeGeometry(600,500,500);
-		var material = new away3d.materials.ColorMaterial(16711935);
-		var mesh = new away3d.entities.Mesh(geo,material);
-		mesh.set_rotationX(45);
-		this.addChild(mesh);
+	cubes: null
+	,colour: null
+	,depth: null
+	,initialize: function() {
+		var light = new away3d.lights.DirectionalLight();
+		var lightPicker = new away3d.materials.lightpickers.StaticLightPicker([light]);
+		var geo = new away3d.primitives.CubeGeometry(60,60,60);
+		var material = new away3d.materials.ColorMaterial(this.colour);
+		var this1;
+		this1 = new openfl.VectorData();
+		var this2;
+		this2 = new Array(0);
+		this1.data = this2;
+		this1.length = 0;
+		this1.fixed = false;
+		this.cubes = this1;
+		var _g = 0;
+		while(_g < 50) {
+			var i = _g++;
+			var mesh = new away3d.entities.Mesh(geo,material);
+			mesh.set_rotationX(45);
+			mesh.set_rotationY(Math.random() * 360);
+			mesh.set_x(Math.random() * 2000 - 1000);
+			mesh.set_y(Math.random() * 1500 - 750);
+			mesh.set_z(i / 50 * -this.depth + this.depth);
+			this.addChild(mesh);
+			var this3 = this.cubes;
+			if(!this3.fixed) {
+				this3.length++;
+				if(this3.data.length < this3.length) {
+					var data;
+					var this4;
+					this4 = new Array(this3.data.length + 10);
+					data = this4;
+					haxe.ds._Vector.Vector_Impl_.blit(this3.data,0,data,0,this3.data.length);
+					this3.data = data;
+				}
+				this3.data[this3.length - 1] = mesh;
+			}
+			this3.length;
+		}
+		material.set_lightPicker(lightPicker);
+	}
+	,update: function() {
+		var _g1 = 0;
+		var _g = this.cubes.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			var _g2 = this.cubes.data[i];
+			_g2.set_rotationY(_g2.get_rotationY() + 0.5);
+		}
 	}
 	,__class__: com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject
 });
@@ -30899,7 +31075,6 @@ starling.events.EventDispatcher.prototype = {
 			while(_g < numListeners) {
 				var i = _g++;
 				var listener = listeners[i];
-				haxe.Log.trace("listener = " + Std.string(listener),{ fileName : "EventDispatcher.hx", lineNumber : 163, className : "starling.events.EventDispatcher", methodName : "invokeEvent"});
 				if(listener != null) listener(event,event.get_data());
 				if(event.get_stopsImmediatePropagation()) return true;
 			}
@@ -35061,38 +35236,10 @@ $hxClasses["com.imagination.robotlegs.starling.view.starling.CheckerboardStarlin
 com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer.__name__ = ["com","imagination","robotlegs","starling","view","starling","CheckerboardStarlingLayer"];
 com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer.__super__ = robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer;
 com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer.prototype = $extend(robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer.prototype,{
-	container: null
-	,initialize: function() {
-		haxe.Log.trace("CheckerboardStarlingLayer initialize",{ fileName : "CheckerboardStarlingLayer.hx", lineNumber : 28, className : "com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer", methodName : "initialize"});
-		var m = new openfl.geom.Matrix();
-		m.createGradientBox(512,512,0,0,0);
-		var fS = new openfl.display.Sprite();
-		fS.get_graphics().beginGradientFill(openfl.display.GradientType.RADIAL,[11141120,47872],[1,1],[0,255],m);
-		fS.get_graphics().drawRect(0,0,512,512);
-		fS.get_graphics().endFill();
-		var checkers = new openfl.display.BitmapData(512,512,true,0);
-		checkers.draw(fS);
-		var _g = 0;
-		while(_g < 16) {
-			var yP = _g++;
-			var _g1 = 0;
-			while(_g1 < 16) {
-				var xP = _g1++;
-				if((yP + xP) % 2 == 0) checkers.fillRect(new openfl.geom.Rectangle(xP * 32,yP * 32,32,32),0);
-			}
-		}
-		var checkerTx = starling.textures.Texture.fromBitmapData(checkers);
-		this.container = new starling.display.Sprite();
-		this.container.set_pivotX(this.container.set_pivotY(256));
-		this.container.set_x(400);
-		this.container.set_y(300);
-		this.container.set_scaleX(this.container.set_scaleY(2));
-		this.container.addChild(new starling.display.Image(checkerTx));
-		this.addChild(this.container);
-	}
-	,update: function() {
-		var _g = this.container;
-		_g.set_rotation(_g.get_rotation() + 0.005);
+	initialize: function() {
+		var landscape = openfl.Assets.getBitmapData("img/landscape.jpg");
+		var image = new starling.display.Image(starling.textures.Texture.fromBitmapData(landscape));
+		this.addChild(image);
 	}
 	,__class__: com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer
 });
@@ -35116,17 +35263,83 @@ $hxClasses["com.imagination.robotlegs.starling.view.starling.MainStarlingLayer"]
 com.imagination.robotlegs.starling.view.starling.MainStarlingLayer.__name__ = ["com","imagination","robotlegs","starling","view","starling","MainStarlingLayer"];
 com.imagination.robotlegs.starling.view.starling.MainStarlingLayer.__super__ = robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer;
 com.imagination.robotlegs.starling.view.starling.MainStarlingLayer.prototype = $extend(robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer.prototype,{
-	mParticleSystem: null
-	,broadcast: null
-	,time: null
+	time: null
+	,assets: null
+	,mMovies: null
 	,initialize: function() {
-		haxe.Log.trace("MainStarlingLayer initialize",{ fileName : "MainStarlingLayer.hx", lineNumber : 32, className : "com.imagination.robotlegs.starling.view.starling.MainStarlingLayer", methodName : "initialize"});
-		var quad = new starling.display.Quad(200,200,-65536);
-		this.addChild(quad);
+		var _g = this;
+		this.assets = new starling.utils.AssetManager();
+		var atlas_xml = Xml.parse(openfl.Assets.getText("img/atlas.xml"));
+		var atlas = openfl.Assets.getBitmapData("img/atlas.png");
+		this.assets.enqueueWithName(atlas,"atlas");
+		this.assets.enqueueWithName(atlas_xml,"atlas_xml");
+		this.assets.loadQueue(function(ratio) {
+			if(ratio == 1) _g.onComplete(_g.assets);
+		});
+	}
+	,onComplete: function(assets) {
+		var frames;
+		var value = assets.getTextures("flight");
+		var vectorData = new openfl.VectorData();
+		vectorData.length = value.length;
+		vectorData.fixed = true;
+		var vec;
+		var this1;
+		this1 = new Array(value.length);
+		vec = this1;
+		var _g1 = 0;
+		var _g = value.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			vec[i] = value[i];
+		}
+		vectorData.data = vec;
+		frames = vectorData;
+		var this2;
+		this2 = new openfl.VectorData();
+		var this3;
+		this3 = new Array(0);
+		this2.data = this3;
+		this2.length = 0;
+		this2.fixed = false;
+		this.mMovies = this2;
+		var num = 8;
+		var _g2 = 0;
+		while(_g2 < num) {
+			var i1 = _g2++;
+			var t = i1 / num;
+			var mMovie = new starling.display.MovieClip(frames,15);
+			mMovie.set_currentFrame(Math.floor(frames.length * Math.random()));
+			mMovie.set_y(-30 + t * 460);
+			mMovie.set_x(i1 * (350 + Math.random() * 50) % 960);
+			this.addChild(mMovie);
+			starling.core.Starling.get_Juggler().add(mMovie);
+			var this4 = this.mMovies;
+			if(!this4.fixed) {
+				this4.length++;
+				if(this4.data.length < this4.length) {
+					var data;
+					var this5;
+					this5 = new Array(this4.data.length + 10);
+					data = this5;
+					haxe.ds._Vector.Vector_Impl_.blit(this4.data,0,data,0,this4.data.length);
+					this4.data = data;
+				}
+				this4.data[this4.length - 1] = mMovie;
+			}
+			this4.length;
+		}
+		this.addEventListener(starling.events.EnterFrameEvent.ENTER_FRAME,$bind(this,this.Update));
 	}
 	,Update: function(e) {
-		this.mParticleSystem.advanceTime(this.time);
-		this.time++;
+		var _g1 = 0;
+		var _g = this.mMovies.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			var _g2 = this.mMovies.data[i];
+			_g2.set_x(_g2.get_x() + 1);
+			if(this.mMovies.data[i].get_x() > 960) this.mMovies.data[i].set_x(-200);
+		}
 	}
 	,__class__: com.imagination.robotlegs.starling.view.starling.MainStarlingLayer
 });
@@ -35297,6 +35510,12 @@ haxe.Timer.prototype = {
 	,run: function() {
 	}
 	,__class__: haxe.Timer
+};
+haxe.Utf8 = function() { };
+$hxClasses["haxe.Utf8"] = haxe.Utf8;
+haxe.Utf8.__name__ = ["haxe","Utf8"];
+haxe.Utf8.charCodeAt = function(s,index) {
+	return HxOverrides.cca(s,index);
 };
 haxe.crypto = {};
 haxe.crypto.BaseCode = function(base) {
@@ -36931,7 +37150,6 @@ lime._backend.html5.HTML5Renderer.prototype = {
 		if(this.parent.window.backend.div != null) this.parent.context = lime.graphics.RenderContext.DOM(this.parent.window.backend.div); else if(this.parent.window.backend.canvas != null) {
 			var webgl = null;
 			if(webgl == null) this.parent.context = lime.graphics.RenderContext.CANVAS(this.parent.window.backend.canvas.getContext("2d")); else {
-				webgl = WebGLDebugUtils.makeDebugContext(webgl);
 				lime.graphics.opengl.GL.context = webgl;
 				this.parent.context = lime.graphics.RenderContext.OPENGL(lime.graphics.opengl.GL.context);
 			}
@@ -38433,11 +38651,15 @@ lime.audio.AudioManager.suspend = function() {
 		}
 	}
 };
-lime.audio.AudioSource = function(buffer) {
+lime.audio.AudioSource = function(buffer,offset,length,loops) {
+	if(loops == null) loops = 0;
+	if(offset == null) offset = 0;
 	this.onComplete = new lime.app.Event();
 	this.buffer = buffer;
+	this.offset = offset;
+	if(length != null && length != 0) this.set_length(length);
+	this.loops = loops;
 	this.id = 0;
-	this.pauseTime = 0;
 	if(buffer != null) this.init();
 };
 $hxClasses["lime.audio.AudioSource"] = lime.audio.AudioSource;
@@ -38445,8 +38667,12 @@ lime.audio.AudioSource.__name__ = ["lime","audio","AudioSource"];
 lime.audio.AudioSource.prototype = {
 	onComplete: null
 	,buffer: null
+	,loops: null
+	,offset: null
 	,id: null
+	,playing: null
 	,pauseTime: null
+	,__length: null
 	,init: function() {
 		{
 			var _g = lime.audio.AudioManager.context;
@@ -38482,20 +38708,29 @@ lime.audio.AudioSource.prototype = {
 	}
 	,stop: function() {
 	}
+	,timer_onRun: function() {
+	}
+	,get_currentTime: function() {
+		return 0;
+	}
+	,set_currentTime: function(value) {
+		return this.pauseTime = value;
+	}
 	,get_gain: function() {
 		return 1;
 	}
 	,set_gain: function(value) {
 		return 1;
 	}
-	,get_timeOffset: function() {
+	,get_length: function() {
+		if(this.__length != null) return this.__length;
 		return 0;
 	}
-	,set_timeOffset: function(value) {
-		return 0;
+	,set_length: function(value) {
+		return this.__length = value;
 	}
 	,__class__: lime.audio.AudioSource
-	,__properties__: {set_timeOffset:"set_timeOffset",get_timeOffset:"get_timeOffset",set_gain:"set_gain",get_gain:"get_gain"}
+	,__properties__: {set_length:"set_length",get_length:"get_length",set_gain:"set_gain",get_gain:"get_gain",set_currentTime:"set_currentTime",get_currentTime:"get_currentTime"}
 };
 lime.audio.FlashAudioContext = function() {
 };
@@ -39395,6 +39630,8 @@ lime.graphics.Image.prototype = {
 		if(sourceRect.x + sourceRect.width > sourceImage.width) sourceRect.width = sourceImage.width - sourceRect.x;
 		if(sourceRect.y + sourceRect.height > sourceImage.height) sourceRect.height = sourceImage.height - sourceRect.y;
 		if(sourceRect.width <= 0 || sourceRect.height <= 0) return;
+		if(destPoint.x + sourceRect.width > this.width) sourceRect.width = this.width - destPoint.x;
+		if(destPoint.y + sourceRect.height > this.height) sourceRect.height = this.height - destPoint.y;
 		var _g = this.type;
 		switch(_g[1]) {
 		case 0:
@@ -44485,29 +44722,24 @@ openfl.Memory._setPositionTemporarily = function(position,action) {
 	return value;
 };
 openfl.Memory.getByte = function(addr) {
-	if(addr < 0 || addr + 1 > openfl.Memory.len) throw "Bad address";
 	return openfl.Memory.gcRef.data.getInt8(addr);
 };
 openfl.Memory.getDouble = function(addr) {
-	if(addr < 0 || addr + 8 > openfl.Memory.len) throw "Bad address";
 	return openfl.Memory._setPositionTemporarily(addr,function() {
 		return openfl.Memory.gcRef.readDouble();
 	});
 };
 openfl.Memory.getFloat = function(addr) {
-	if(addr < 0 || addr + 4 > openfl.Memory.len) throw "Bad address";
 	return openfl.Memory._setPositionTemporarily(addr,function() {
 		return openfl.Memory.gcRef.readFloat();
 	});
 };
 openfl.Memory.getI32 = function(addr) {
-	if(addr < 0 || addr + 4 > openfl.Memory.len) throw "Bad address";
 	return openfl.Memory._setPositionTemporarily(addr,function() {
 		return openfl.Memory.gcRef.readInt();
 	});
 };
 openfl.Memory.getUI16 = function(addr) {
-	if(addr < 0 || addr + 2 > openfl.Memory.len) throw "Bad address";
 	return openfl.Memory._setPositionTemporarily(addr,function() {
 		return openfl.Memory.gcRef.readUnsignedShort();
 	});
@@ -44517,29 +44749,24 @@ openfl.Memory.select = function(inBytes) {
 	if(inBytes != null) openfl.Memory.len = inBytes.length; else openfl.Memory.len = 0;
 };
 openfl.Memory.setByte = function(addr,v) {
-	if(addr < 0 || addr + 1 > openfl.Memory.len) throw "Bad address";
 	openfl.Memory.gcRef.data.setUint8(addr,v);
 };
 openfl.Memory.setDouble = function(addr,v) {
-	if(addr < 0 || addr + 8 > openfl.Memory.len) throw "Bad address";
 	openfl.Memory._setPositionTemporarily(addr,function() {
 		openfl.Memory.gcRef.writeDouble(v);
 	});
 };
 openfl.Memory.setFloat = function(addr,v) {
-	if(addr < 0 || addr + 4 > openfl.Memory.len) throw "Bad address";
 	openfl.Memory._setPositionTemporarily(addr,function() {
 		openfl.Memory.gcRef.writeFloat(v);
 	});
 };
 openfl.Memory.setI16 = function(addr,v) {
-	if(addr < 0 || addr + 2 > openfl.Memory.len) throw "Bad address";
 	openfl.Memory._setPositionTemporarily(addr,function() {
 		openfl.Memory.gcRef.writeUnsignedShort(v);
 	});
 };
 openfl.Memory.setI32 = function(addr,v) {
-	if(addr < 0 || addr + 4 > openfl.Memory.len) throw "Bad address";
 	openfl.Memory._setPositionTemporarily(addr,function() {
 		openfl.Memory.gcRef.writeInt(v);
 	});
@@ -46448,25 +46675,59 @@ openfl._internal.renderer.canvas.CanvasTextField.renderText = function(textField
 	openfl._internal.renderer.canvas.CanvasTextField.context.font = textField.__getFont(format);
 	openfl._internal.renderer.canvas.CanvasTextField.context.textBaseline = "top";
 	openfl._internal.renderer.canvas.CanvasTextField.context.fillStyle = "#" + StringTools.hex(format.color,6);
-	var lines = text.split("\n");
+	var lines = [];
+	if(textField.get_wordWrap()) {
+		var words = text.split(" ");
+		var line = "";
+		var word;
+		var newLineIndex;
+		var test;
+		var _g1 = 0;
+		var _g = words.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			word = words[i];
+			newLineIndex = word.indexOf("\n");
+			if(newLineIndex > -1) {
+				while(newLineIndex > -1) {
+					test = line + word.substring(0,newLineIndex) + " ";
+					if(openfl._internal.renderer.canvas.CanvasTextField.context.measureText(test).width > textField.__width - 4 && i > 0) {
+						lines.push(line);
+						lines.push(word.substring(0,newLineIndex) + " ");
+					} else lines.push(line + word.substring(0,newLineIndex) + " ");
+					word = HxOverrides.substr(word,newLineIndex + 1,null);
+					newLineIndex = word.indexOf("\n");
+					line = "";
+				}
+				if(word != "") line = word + " ";
+			} else {
+				test = line + words[i] + " ";
+				if(openfl._internal.renderer.canvas.CanvasTextField.context.measureText(test).width > textField.__width - 4 && i > 0) {
+					lines.push(line);
+					line = words[i] + " ";
+				} else line = test;
+			}
+		}
+		if(line != "") lines.push(line);
+	} else lines = text.split("\n");
 	var yOffset = 0;
-	var _g = 0;
-	while(_g < lines.length) {
-		var line = lines[_g];
-		++_g;
-		var _g1 = format.align;
-		switch(_g1[1]) {
+	var _g2 = 0;
+	while(_g2 < lines.length) {
+		var line1 = lines[_g2];
+		++_g2;
+		var _g11 = format.align;
+		switch(_g11[1]) {
 		case 3:
 			openfl._internal.renderer.canvas.CanvasTextField.context.textAlign = "center";
-			openfl._internal.renderer.canvas.CanvasTextField.context.fillText(line,textField.__width / 2,2 + yOffset,textField.__width - 4);
+			openfl._internal.renderer.canvas.CanvasTextField.context.fillText(line1,textField.__width / 2,2 + yOffset,textField.__width - 4);
 			break;
 		case 1:
 			openfl._internal.renderer.canvas.CanvasTextField.context.textAlign = "end";
-			openfl._internal.renderer.canvas.CanvasTextField.context.fillText(line,textField.__width - 2,2 + yOffset,textField.__width - 4);
+			openfl._internal.renderer.canvas.CanvasTextField.context.fillText(line1,textField.__width - 2,2 + yOffset,textField.__width - 4);
 			break;
 		default:
 			openfl._internal.renderer.canvas.CanvasTextField.context.textAlign = "start";
-			openfl._internal.renderer.canvas.CanvasTextField.context.fillText(line,2 + offsetX,2 + yOffset,textField.__width - 4);
+			openfl._internal.renderer.canvas.CanvasTextField.context.fillText(line1,2 + offsetX,2 + yOffset,textField.__width - 4);
 		}
 		yOffset += textField.get_textHeight();
 	}
@@ -46972,12 +47233,11 @@ openfl._internal.renderer.opengl.GLTextField.render = function(textField,renderS
 		if(textField.background) graphics.beginFill(textField.backgroundColor);
 		graphics.drawRect(0.5,0.5,textField.__width - 1,textField.__height - 1);
 	}
-	if(textField.__tilesheets != null) {
-		var _g1 = 0;
-		var _g = textField.__tilesheets.length;
-		while(_g1 < _g) {
-			var i = _g1++;
-			graphics.drawTiles(textField.__tilesheets[i],textField.__tileData[i],true,4);
+	if(textField.__tileData != null) {
+		var $it0 = textField.__tilesheets.keys();
+		while( $it0.hasNext() ) {
+			var tilesheet = $it0.next();
+			graphics.drawTiles(tilesheet,textField.__tileData.h[tilesheet.__id__],true,4,textField.__tileDataLength.h[tilesheet.__id__]);
 		}
 	}
 	openfl._internal.renderer.opengl.utils.GraphicsRenderer.render(textField,renderSession);
@@ -47048,48 +47308,78 @@ openfl._internal.renderer.opengl.GLTextField.renderText = function(textField,tex
 		var r = (format.color >> 16 & 255) / 255;
 		var g = (format.color >> 8 & 255) / 255;
 		var b = (format.color & 255) / 255;
+		var tlm = textField.getLineMetrics(0);
 		var image2;
 		var x1 = offsetX;
-		var y1 = size;
-		if(format.align == openfl.text.TextFormatAlign.RIGHT) x1 += textField.__width - textWidth; else if(format.align == openfl.text.TextFormatAlign.CENTER) x1 += (textField.__width - textWidth) / 2;
+		var y1 = 2 + tlm.ascent;
 		var tileData;
-		if(textField.__tilesheets.length == 0 || textField.__tilesheets[textField.__tilesheets.length - 1] != tilesheet1) {
+		textField.__tilesheets.set(tilesheet1,true);
+		if(!(textField.__tileData.h.__keys__[tilesheet1.__id__] != null)) {
 			tileData = new Array();
-			textField.__tilesheets.push(tilesheet1);
-			textField.__tileData.push(tileData);
-		} else tileData = textField.__tileData[textField.__tileData.length - 1];
+			textField.__tileData.set(tilesheet1,tileData);
+			textField.__tileDataLength.set(tilesheet1,0);
+		}
+		tileData = textField.__tileData.h[tilesheet1.__id__];
 		var offsetY = 0;
 		var lines = text.split("\n");
 		if(textField.__textLayout == null) textField.__textLayout = new lime.text.TextLayout();
 		var textLayout = textField.__textLayout;
+		var length = 0;
+		var line_i = 0;
+		var oldX = x1;
 		var _g2 = 0;
 		while(_g2 < lines.length) {
 			var line = lines[_g2];
 			++_g2;
+			tlm = textField.getLineMetrics(line_i);
+			x1 = oldX;
+			var _g11 = format.align;
+			switch(_g11[1]) {
+			case 0:case 2:
+				x1 += 0;
+				break;
+			case 3:
+				x1 += (textField.__width - 4 - tlm.width) / 2;
+				break;
+			case 1:
+				x1 += textField.__width - 4 - tlm.width;
+				break;
+			}
 			textLayout.set_text(null);
 			textLayout.set_font(font);
 			textLayout.set_size(size);
 			textLayout.set_text(line);
-			var _g11 = 0;
+			var _g12 = 0;
 			var _g21 = textLayout.positions;
-			while(_g11 < _g21.length) {
-				var position = _g21[_g11];
-				++_g11;
+			while(_g12 < _g21.length) {
+				var position = _g21[_g12];
+				++_g12;
 				image2 = images.get(position.glyph);
 				if(image2 != null) {
-					tileData.push(x1 + position.offset.x + image2.x);
-					tileData.push(y1 + position.offset.y - image2.y);
-					tileData.push(tileID1.get(position.glyph));
-					tileData.push(r);
-					tileData.push(g);
-					tileData.push(b);
+					if(length >= tileData.length) {
+						tileData.push(x1 + position.offset.x + image2.x);
+						tileData.push(y1 + position.offset.y - image2.y);
+						tileData.push(tileID1.get(position.glyph));
+						tileData.push(r);
+						tileData.push(g);
+						tileData.push(b);
+					} else {
+						tileData[length] = x1 + position.offset.x + image2.x;
+						tileData[length + 1] = y1 + position.offset.y - image2.y;
+						tileData[length + 2] = tileID1.get(position.glyph);
+						tileData[length + 3] = r;
+						tileData[length + 4] = g;
+						tileData[length + 5] = b;
+					}
+					length += 6;
 				}
 				x1 += position.advance.x;
 				y1 -= position.advance.y;
 			}
-			x1 = 0;
-			y1 += size * 1.185;
+			y1 += tlm.height;
+			line_i++;
 		}
+		textField.__tileDataLength.set(tilesheet1,length);
 	}
 };
 openfl._internal.renderer.opengl.GLTextField.update = function(textField) {
@@ -47097,10 +47387,14 @@ openfl._internal.renderer.opengl.GLTextField.update = function(textField) {
 		if((textField.__text == null || textField.__text == "") && !textField.background && !textField.border || (textField.get_width() <= 0 || textField.get_height() <= 0) && textField.autoSize != openfl.text.TextFieldAutoSize.LEFT) {
 			textField.__tilesheets = null;
 			textField.__tileData = null;
+			textField.__tileDataLength = null;
 			textField.__dirty = false;
 		} else {
-			textField.__tilesheets = new Array();
-			textField.__tileData = new Array();
+			textField.__tilesheets = new haxe.ds.ObjectMap();
+			if(textField.__tileData == null) {
+				textField.__tileData = new haxe.ds.ObjectMap();
+				textField.__tileDataLength = new haxe.ds.ObjectMap();
+			}
 			if(textField.__text != null && textField.__text != "") {
 				var text = textField.get_text();
 				if(textField.displayAsPassword) {
@@ -47141,6 +47435,14 @@ openfl._internal.renderer.opengl.GLTextField.update = function(textField) {
 			} else if(textField.autoSize == openfl.text.TextFieldAutoSize.LEFT) {
 				textField.__width = 4;
 				textField.__height = 4;
+			}
+			var $it0 = textField.__tileData.keys();
+			while( $it0.hasNext() ) {
+				var key = $it0.next();
+				if(!(textField.__tilesheets.h.__keys__[key.__id__] != null)) {
+					textField.__tileData.remove(key);
+					textField.__tileDataLength.remove(key);
+				}
 			}
 			textField.__dirty = false;
 			return true;
@@ -49910,25 +50212,14 @@ openfl._internal.renderer.opengl.utils.SpriteBatch.prototype = {
 				matrix.d = c * oMatrix.b + d * oMatrix.d;
 				matrix.tx = tx * oMatrix.a + ty * oMatrix.c + oMatrix.tx;
 				matrix.ty = tx * oMatrix.b + ty * oMatrix.d + oMatrix.ty;
-				if(sheet.__bitmap.__uvFlipped) {
-					uvs.x0 = tileUV.x;
-					uvs.y0 = tileUV.height;
-					uvs.x1 = tileUV.width;
-					uvs.y1 = tileUV.height;
-					uvs.x2 = tileUV.width;
-					uvs.y2 = tileUV.y;
-					uvs.x3 = tileUV.x;
-					uvs.y3 = tileUV.y;
-				} else {
-					uvs.x0 = tileUV.x;
-					uvs.y0 = tileUV.y;
-					uvs.x1 = tileUV.width;
-					uvs.y1 = tileUV.y;
-					uvs.x2 = tileUV.width;
-					uvs.y2 = tileUV.height;
-					uvs.x3 = tileUV.x;
-					uvs.y3 = tileUV.height;
-				}
+				uvs.x0 = tileUV.x;
+				uvs.y0 = tileUV.y;
+				uvs.x1 = tileUV.width;
+				uvs.y1 = tileUV.y;
+				uvs.x2 = tileUV.width;
+				uvs.y2 = tileUV.height;
+				uvs.x3 = tileUV.x;
+				uvs.y3 = tileUV.height;
 				bIndex = this.batchedSprites * 4 * this.elementsPerVertex;
 				color = ((alpha * 255 | 0) & 255) << 24 | (tint & 255) << 16 | (tint >> 8 & 255) << 8 | tint >> 16 & 255;
 				this.fillVertices(bIndex,rect.width,rect.height,matrix,uvs,null,color);
@@ -50503,7 +50794,6 @@ openfl.display.Bitmap.prototype = $extend(openfl.display.DisplayObjectContainer.
 openfl.display.BitmapData = function(width,height,transparent,fillColor) {
 	if(fillColor == null) fillColor = -1;
 	if(transparent == null) transparent = true;
-	this.__uvFlipped = false;
 	this.transparent = transparent;
 	if(width == null) width = 0; else width = width;
 	if(height == null) height = 0; else height = height;
@@ -50597,7 +50887,6 @@ openfl.display.BitmapData.prototype = {
 	,__textureImage: null
 	,__framebuffer: null
 	,__uvData: null
-	,__uvFlipped: null
 	,__spritebatch: null
 	,applyFilter: function(sourceBitmapData,sourceRect,destPoint,filter) {
 		if(!this.__isValid || sourceBitmapData == null || !sourceBitmapData.__isValid) return;
@@ -50731,7 +51020,9 @@ openfl.display.BitmapData.prototype = {
 			var ctCache = source.__worldColorTransform;
 			var matrixCache1 = source.__worldTransform;
 			var blendModeCache = source.blendMode;
-			if(matrix != null) source.__worldTransform = matrix; else source.__worldTransform = new openfl.geom.Matrix();
+			if(matrix == null) matrix = new openfl.geom.Matrix();
+			this.invertMatrix(matrix);
+			source.__worldTransform = matrix;
 			if(colorTransform != null) source.__worldColorTransform = colorTransform; else source.__worldColorTransform = new openfl.geom.ColorTransform();
 			source.blendMode = blendMode;
 			source.__updateChildren(false);
@@ -50750,10 +51041,21 @@ openfl.display.BitmapData.prototype = {
 			gl.colorMask(true,true,true,renderSession1.renderer.transparent);
 			this.__texture = this.__framebuffer.texture;
 			this.__image.dirty = false;
-			this.__createUVs(true);
+			this.__createUVs();
+			this.invertMatrix(matrix);
 			break;
 		default:
 		}
+	}
+	,invertMatrix: function(matrix) {
+		var tx = matrix.tx;
+		var ty = matrix.ty;
+		matrix.tx = 0;
+		matrix.ty = 0;
+		matrix.scale(1,-1);
+		matrix.translate(0,this.height);
+		matrix.tx += tx;
+		matrix.ty -= ty;
 	}
 	,encode: function(rect,compressor,byteArray) {
 		if(!this.__isValid || rect == null) return byteArray = null;
@@ -51007,7 +51309,9 @@ openfl.display.BitmapData.prototype = {
 				while(_g3 < _g2) {
 					var xx = _g3++;
 					position = (width_yy + xx) * 4;
-					pixelValue = openfl.Memory.getI32(position);
+					pixelValue = openfl.Memory._setPositionTemporarily(position,function() {
+						return openfl.Memory.gcRef.readInt();
+					});
 					pixelMask = pixelValue & mask;
 					i = openfl.display.BitmapData.__ucompare(pixelMask,thresholdMask);
 					test = false;
@@ -51067,7 +51371,9 @@ openfl.display.BitmapData.prototype = {
 				while(_g11 < dw) {
 					var xx1 = _g11++;
 					position1 = (xx1 + sx + (yy1 + sy) * sw) * 4;
-					pixelValue1 = openfl.Memory.getI32(position1);
+					pixelValue1 = openfl.Memory._setPositionTemporarily(position1,function() {
+						return openfl.Memory.gcRef.readInt();
+					});
 					pixelMask1 = pixelValue1 & mask;
 					i1 = openfl.display.BitmapData.__ucompare(pixelMask1,thresholdMask1);
 					test1 = false;
@@ -51075,7 +51381,9 @@ openfl.display.BitmapData.prototype = {
 					if(test1) {
 						openfl.Memory.setI32(position1,color);
 						hits1++;
-					} else if(copySource) openfl.Memory.setI32(position1,openfl.Memory.getI32(canvasMemory + position1));
+					} else if(copySource) openfl.Memory.setI32(position1,openfl.Memory._setPositionTemporarily(canvasMemory + position1,function() {
+						return openfl.Memory.gcRef.readInt();
+					}));
 				}
 			}
 			memory1.position = 0;
@@ -51087,29 +51395,16 @@ openfl.display.BitmapData.prototype = {
 	}
 	,unlock: function(changeRect) {
 	}
-	,__createUVs: function(verticalFlip) {
-		if(verticalFlip == null) verticalFlip = false;
+	,__createUVs: function() {
 		if(this.__uvData == null) this.__uvData = new openfl.display.TextureUvs();
-		this.__uvFlipped = verticalFlip;
-		if(verticalFlip) {
-			this.__uvData.x0 = 0;
-			this.__uvData.y0 = 1;
-			this.__uvData.x1 = 1;
-			this.__uvData.y1 = 1;
-			this.__uvData.x2 = 1;
-			this.__uvData.y2 = 0;
-			this.__uvData.x3 = 0;
-			this.__uvData.y3 = 0;
-		} else {
-			this.__uvData.x0 = 0;
-			this.__uvData.y0 = 0;
-			this.__uvData.x1 = 1;
-			this.__uvData.y1 = 0;
-			this.__uvData.x2 = 1;
-			this.__uvData.y2 = 1;
-			this.__uvData.x3 = 0;
-			this.__uvData.y3 = 1;
-		}
+		this.__uvData.x0 = 0;
+		this.__uvData.y0 = 0;
+		this.__uvData.x1 = 1;
+		this.__uvData.y1 = 0;
+		this.__uvData.x2 = 1;
+		this.__uvData.y2 = 1;
+		this.__uvData.x3 = 0;
+		this.__uvData.y3 = 1;
 	}
 	,__fromBase64: function(base64,type,onload) {
 		var _g = this;
@@ -51770,7 +52065,6 @@ openfl.display.OpenGLView = function() {
 		this.__canvas.height = openfl.Lib.current.stage.stageHeight;
 		this.__context = this.__canvas.getContext("webgl");
 		if(this.__context == null) this.__context = this.__canvas.getContext("experimental-webgl");
-		this.__context = WebGLDebugUtils.makeDebugContext(this.__context);
 		lime.graphics.opengl.GL.context = this.__context;
 		this.__initialized = true;
 	}
@@ -51911,96 +52205,6 @@ openfl.display.Preloader.prototype = $extend(lime.app.Preloader.prototype,{
 		if(this.loaded == this.total) this.start();
 	}
 	,__class__: openfl.display.Preloader
-});
-openfl.display.SimpleButton = function(upState,overState,downState,hitTestState) {
-	openfl.display.DisplayObjectContainer.call(this);
-	this.enabled = true;
-	this.trackAsMenu = false;
-	this.useHandCursor = true;
-	this.mouseChildren = false;
-	this.set_upState(upState != null?upState:this.__generateDefaultState());
-	this.set_overState(overState != null?overState:this.__generateDefaultState());
-	this.set_downState(downState != null?downState:this.__generateDefaultState());
-	this.set_hitTestState(hitTestState != null?hitTestState:this.__generateDefaultState());
-	this.set___currentState(this.upState);
-};
-$hxClasses["openfl.display.SimpleButton"] = openfl.display.SimpleButton;
-openfl.display.SimpleButton.__name__ = ["openfl","display","SimpleButton"];
-openfl.display.SimpleButton.__super__ = openfl.display.DisplayObjectContainer;
-openfl.display.SimpleButton.prototype = $extend(openfl.display.DisplayObjectContainer.prototype,{
-	downState: null
-	,enabled: null
-	,hitTestState: null
-	,overState: null
-	,trackAsMenu: null
-	,upState: null
-	,useHandCursor: null
-	,__currentState: null
-	,__soundTransform: null
-	,switchState: function(state) {
-		if(this.__currentState != null && this.__currentState.parent == this) this.removeChild(this.__currentState);
-		if(state != null) this.addChild(state);
-	}
-	,__generateDefaultState: function() {
-		return new openfl.display.DisplayObject();
-	}
-	,set_downState: function(downState) {
-		if(this.downState != null && this.__currentState == this.downState) this.set___currentState(downState);
-		return this.downState = downState;
-	}
-	,set_hitTestState: function(hitTestState) {
-		if(hitTestState != this.hitTestState) {
-			if(this.hitTestState != null && this.hitTestState.parent == this) this.removeChild(this.hitTestState);
-			this.removeEventListener(openfl.events.MouseEvent.MOUSE_DOWN,$bind(this,this.__this_onMouseDown));
-			this.removeEventListener(openfl.events.MouseEvent.MOUSE_OUT,$bind(this,this.__this_onMouseOut));
-			this.removeEventListener(openfl.events.MouseEvent.MOUSE_OVER,$bind(this,this.__this_onMouseOver));
-			this.removeEventListener(openfl.events.MouseEvent.MOUSE_UP,$bind(this,this.__this_onMouseUp));
-			if(hitTestState != null) {
-				this.addEventListener(openfl.events.MouseEvent.MOUSE_DOWN,$bind(this,this.__this_onMouseDown));
-				this.addEventListener(openfl.events.MouseEvent.MOUSE_OUT,$bind(this,this.__this_onMouseOut));
-				this.addEventListener(openfl.events.MouseEvent.MOUSE_OVER,$bind(this,this.__this_onMouseOver));
-				this.addEventListener(openfl.events.MouseEvent.MOUSE_UP,$bind(this,this.__this_onMouseUp));
-				hitTestState.set_alpha(0.0);
-				this.addChild(hitTestState);
-			}
-		}
-		return this.hitTestState = hitTestState;
-	}
-	,set_overState: function(overState) {
-		if(this.overState != null && this.__currentState == this.overState) this.set___currentState(overState);
-		return this.overState = overState;
-	}
-	,get_soundTransform: function() {
-		if(this.__soundTransform == null) this.__soundTransform = new openfl.media.SoundTransform();
-		return new openfl.media.SoundTransform(this.__soundTransform.volume,this.__soundTransform.pan);
-	}
-	,set_soundTransform: function(value) {
-		this.__soundTransform = new openfl.media.SoundTransform(value.volume,value.pan);
-		return value;
-	}
-	,set_upState: function(upState) {
-		if(this.upState != null && this.__currentState == this.upState) this.set___currentState(upState);
-		return this.upState = upState;
-	}
-	,set___currentState: function(state) {
-		if(this.__currentState == state) return state;
-		this.switchState(state);
-		return this.__currentState = state;
-	}
-	,__this_onMouseDown: function(event) {
-		this.set___currentState(this.downState);
-	}
-	,__this_onMouseOut: function(event) {
-		if(this.upState != this.__currentState) this.set___currentState(this.upState);
-	}
-	,__this_onMouseOver: function(event) {
-		if(this.overState != this.__currentState) this.set___currentState(this.overState);
-	}
-	,__this_onMouseUp: function(event) {
-		this.set___currentState(this.overState);
-	}
-	,__class__: openfl.display.SimpleButton
-	,__properties__: $extend(openfl.display.DisplayObjectContainer.prototype.__properties__,{set___currentState:"set___currentState",set_upState:"set_upState",set_soundTransform:"set_soundTransform",get_soundTransform:"get_soundTransform",set_overState:"set_overState",set_hitTestState:"set_hitTestState",set_downState:"set_downState"})
 });
 openfl.display.SpreadMethod = $hxClasses["openfl.display.SpreadMethod"] = { __ename__ : true, __constructs__ : ["REPEAT","REFLECT","PAD"] };
 openfl.display.SpreadMethod.REPEAT = ["REPEAT",0];
@@ -52275,7 +52479,8 @@ openfl.display.Stage.prototype = $extend(openfl.display.DisplayObjectContainer.p
 		}
 	}
 	,__getInteractive: function(stack) {
-		stack.push(this);
+		if(stack != null) stack.push(this);
+		return true;
 	}
 	,__onKey: function(type,keyCode,modifier) {
 		openfl.events.MouseEvent.__altKey = lime.ui._KeyModifier.KeyModifier_Impl_.get_altKey(modifier);
@@ -52303,6 +52508,7 @@ openfl.display.Stage.prototype = $extend(openfl.display.DisplayObjectContainer.p
 			target = this;
 			stack = [this];
 		}
+		if(type == openfl.events.MouseEvent.MOUSE_DOWN) this.set_focus(target);
 		this.__fireEvent(openfl.events.MouseEvent.__create(type,button,this.__mouseX,this.__mouseY,target == this?targetPoint:target.globalToLocal(targetPoint),target),stack);
 		var clickType;
 		switch(type) {
@@ -52328,37 +52534,39 @@ openfl.display.Stage.prototype = $extend(openfl.display.DisplayObjectContainer.p
 				} else this.__lastClickTime = currentTime;
 			}
 		}
-		if(js.Boot.__instanceof(target,openfl.display.Sprite)) {
-			var targetSprite = target;
-			if(targetSprite.buttonMode && targetSprite.useHandCursor) lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.POINTER); else lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.ARROW);
-		} else if(js.Boot.__instanceof(target,openfl.display.SimpleButton)) {
-			var targetButton = target;
-			if(targetButton.useHandCursor) lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.POINTER); else lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.ARROW);
-		} else if(js.Boot.__instanceof(target,openfl.text.TextField)) {
-			var targetTextField = target;
-			if(targetTextField.type == openfl.text.TextFieldType.INPUT) lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.TEXT); else lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.ARROW);
-		} else lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.ARROW);
+		var cursor = null;
 		var _g = 0;
-		var _g1 = this.__mouseOutStack;
-		while(_g < _g1.length) {
-			var target1 = _g1[_g];
+		while(_g < stack.length) {
+			var target1 = stack[_g];
 			++_g;
-			if(HxOverrides.indexOf(stack,target1,0) == -1) {
-				HxOverrides.remove(this.__mouseOutStack,target1);
-				var localPoint = target1.globalToLocal(targetPoint);
-				target1.dispatchEvent(new openfl.events.MouseEvent(openfl.events.MouseEvent.MOUSE_OUT,false,false,localPoint.x,localPoint.y,target1));
+			cursor = target1.__getCursor();
+			if(cursor != null) {
+				lime.ui.Mouse.set_cursor(cursor);
+				break;
+			}
+		}
+		if(cursor == null) lime.ui.Mouse.set_cursor(lime.ui.MouseCursor.ARROW);
+		var _g1 = 0;
+		var _g11 = this.__mouseOutStack;
+		while(_g1 < _g11.length) {
+			var target2 = _g11[_g1];
+			++_g1;
+			if(HxOverrides.indexOf(stack,target2,0) == -1) {
+				HxOverrides.remove(this.__mouseOutStack,target2);
+				var localPoint = target2.globalToLocal(targetPoint);
+				target2.dispatchEvent(new openfl.events.MouseEvent(openfl.events.MouseEvent.MOUSE_OUT,false,false,localPoint.x,localPoint.y,target2));
 			}
 		}
 		var _g2 = 0;
 		while(_g2 < stack.length) {
-			var target2 = stack[_g2];
+			var target3 = stack[_g2];
 			++_g2;
-			if(HxOverrides.indexOf(this.__mouseOutStack,target2,0) == -1) {
-				if(target2.hasEventListener(openfl.events.MouseEvent.MOUSE_OVER)) {
-					var localPoint1 = target2.globalToLocal(targetPoint);
-					target2.dispatchEvent(new openfl.events.MouseEvent(openfl.events.MouseEvent.MOUSE_OVER,false,false,localPoint1.x,localPoint1.y,target2));
+			if(HxOverrides.indexOf(this.__mouseOutStack,target3,0) == -1) {
+				if(target3.hasEventListener(openfl.events.MouseEvent.MOUSE_OVER)) {
+					var localPoint1 = target3.globalToLocal(targetPoint);
+					target3.dispatchEvent(new openfl.events.MouseEvent(openfl.events.MouseEvent.MOUSE_OVER,false,false,localPoint1.x,localPoint1.y,target3));
 				}
-				if(target2.hasEventListener(openfl.events.MouseEvent.MOUSE_OUT)) this.__mouseOutStack.push(target2);
+				if(target3.hasEventListener(openfl.events.MouseEvent.MOUSE_OUT)) this.__mouseOutStack.push(target3);
 			}
 		}
 		if(this.__dragObject != null) this.__drag(targetPoint);
@@ -52814,8 +53022,7 @@ openfl.display3D.Context3D.prototype = {
 		if(firstIndex == null) firstIndex = 0;
 		var location = lime.graphics.opengl.GL.context.getUniformLocation(this.currentProgram.glProgram,"yflip");
 		lime.graphics.opengl.GL.context.uniform1f(location,this._yFlip);
-		if(!this.drawing) {
-		}
+		if(!this.drawing) throw new openfl.errors.Error("Need to clear before drawing if the buffer has not been cleared since the last present() call.");
 		var numIndices;
 		if(numTriangles == -1) numIndices = indexBuffer.numIndices; else numIndices = numTriangles * 3;
 		var byteOffset = firstIndex * 2;
@@ -55052,7 +55259,7 @@ openfl.system.Capabilities.get_language = function() {
 };
 openfl.system.Capabilities.get_version = function() {
 	var value = "WEB";
-	value += " " + StringTools.replace("3.0.2",".",",") + ",0";
+	value += " " + StringTools.replace("3.0.3",".",",") + ",0";
 	return value;
 };
 openfl.system.LoaderContext = function(checkPolicyFile,applicationDomain,securityDomain) {
@@ -55271,6 +55478,7 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 	,__textLayout: null
 	,__texture: null
 	,__tileData: null
+	,__tileDataLength: null
 	,__tilesheets: null
 	,__width: null
 	,__div: null
@@ -55293,7 +55501,25 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 	}
 	,getLineMetrics: function(lineIndex) {
 		var height = this.get_textHeight();
-		return new openfl.text.TextLineMetrics(0,this.get_textWidth(),height,height,0,0);
+		var lineWidth = this.__getLineWidth(lineIndex);
+		var lineHeight = this.__getLineMetric(lineIndex,2);
+		var ascender = this.__getLineMetric(lineIndex,0);
+		var descender = this.__getLineMetric(lineIndex,1);
+		var leading = this.__getLineMetric(lineIndex,3);
+		var margin;
+		var _g = this.__textFormat.align;
+		switch(_g[1]) {
+		case 0:case 2:
+			margin = 2;
+			break;
+		case 1:
+			margin = this.get_width() - lineWidth - 2;
+			break;
+		case 3:
+			margin = (this.get_width() - lineWidth) / 2;
+			break;
+		}
+		return new openfl.text.TextLineMetrics(margin,lineWidth,lineHeight,ascender,descender,leading);
 	}
 	,getLineOffset: function(lineIndex) {
 		openfl.Lib.notImplemented("TextField.getLineOffset");
@@ -55379,13 +55605,16 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 		bounds.transform(this.__worldTransform);
 		rect.__expand(bounds.x,bounds.y,bounds.width,bounds.height);
 	}
+	,__getCursor: function() {
+		if(this.type == openfl.text.TextFieldType.INPUT) return lime.ui.MouseCursor.TEXT; else return null;
+	}
 	,__getFont: function(format) {
 		var font;
 		if(format.italic) font = "italic "; else font = "normal ";
 		font += "normal ";
 		if(format.bold) font += "bold "; else font += "normal ";
 		font += format.size + "px";
-		font += "/" + (format.size + format.leading + 4) + "px ";
+		font += "/" + (format.size + format.leading) + "px ";
 		font += "'" + (function($this) {
 			var $r;
 			var _g = format.font;
@@ -55413,6 +55642,138 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 	}
 	,__getFontInstance: function(format) {
 		return null;
+	}
+	,__getLineBreaks: function() {
+		var lines = 0;
+		var _g1 = 0;
+		var _g;
+		var s = this.get_text();
+		_g = s.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			var $char = haxe.Utf8.charCodeAt(this.get_text(),i);
+			if($char == openfl.text.TextField.__utf8_endline_code) lines++;
+		}
+		return lines;
+	}
+	,__getLineBreakIndeces: function() {
+		var breaks = [];
+		var _g1 = 0;
+		var _g;
+		var s = this.get_text();
+		_g = s.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			var $char = haxe.Utf8.charCodeAt(this.get_text(),i);
+			if($char == openfl.text.TextField.__utf8_endline_code) breaks.push(i);
+		}
+		return breaks;
+	}
+	,__getLineBreaksInRange: function(i) {
+		var lines = 0;
+		if(this.__ranges.length > i && i >= 0) {
+			var range = this.__ranges[i];
+			if(range.start > 0 && range.end < this.get_text().length) {
+				var _g1 = range.start;
+				var _g = range.end + 1;
+				while(_g1 < _g) {
+					var j = _g1++;
+					var $char = haxe.Utf8.charCodeAt(this.get_text(),i);
+					if($char == openfl.text.TextField.__utf8_endline_code) lines++;
+				}
+			}
+		}
+		return lines;
+	}
+	,__getLineIndeces: function(line) {
+		var breaks = this.__getLineBreakIndeces();
+		var i = 0;
+		var first_char = 0;
+		var last_char = this.get_text().length - 1;
+		var _g = 0;
+		while(_g < breaks.length) {
+			var br = breaks[_g];
+			++_g;
+			if(i == line) {
+				first_char = br + 1;
+				if(i != breaks.length - 1) last_char = breaks[i + 1] - 1;
+			}
+			i++;
+		}
+		return [first_char,last_char];
+	}
+	,__getLineWidth: function(line) {
+		var measurements = this.__measureTextSub(false);
+		var currWidth = 0.0;
+		var bestWidth = 0.0;
+		var linebreaks = this.__getLineBreakIndeces();
+		var currLine = 0;
+		var _g1 = 0;
+		var _g = measurements.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			var measure = measurements[i];
+			if(HxOverrides.indexOf(linebreaks,i,0) != -1) {
+				if(currLine == line) return currWidth; else if(line == -1 && currWidth > bestWidth) bestWidth = currWidth;
+				currWidth = 0;
+				currLine++;
+			} else currWidth += measurements[i];
+		}
+		if(currLine == line) bestWidth = currWidth; else if(line == -1 && currWidth > bestWidth) bestWidth = currWidth;
+		return bestWidth;
+	}
+	,__getLineMetric: function(line,metric) {
+		if(this.__ranges == null) return this.__getLineMetricSubRangesNull(true,metric); else return this.__getLineMetricSubRangesNotNull(line,metric);
+	}
+	,__getLineMetricSubRangesNull: function(singleLine,metric) {
+		if(singleLine == null) singleLine = false;
+		var font = this.__getFontInstance(this.__textFormat);
+		if(font != null) switch(metric) {
+		case 2:
+			return this.__getLineMetricSubRangesNull(singleLine,0) + this.__getLineMetricSubRangesNull(singleLine,1) + this.__getLineMetricSubRangesNull(singleLine,3);
+		case 0:
+			return font.get_ascender() / font.get_unitsPerEM() * this.__textFormat.size;
+		case 1:
+			return Math.abs(font.get_descender() / font.get_unitsPerEM() * this.__textFormat.size);
+		case 3:
+			return this.__textFormat.leading;
+		default:
+			return 0;
+		}
+		return 0;
+	}
+	,__getLineMetricSubRangesNotNull: function(specificLine,metric) {
+		var lineChars = this.__getLineIndeces(specificLine);
+		var m = 0.0;
+		var best_m = 0.0;
+		var _g = 0;
+		var _g1 = this.__ranges;
+		while(_g < _g1.length) {
+			var range = _g1[_g];
+			++_g;
+			if(range.start >= lineChars[0]) {
+				var font = this.__getFontInstance(range.format);
+				if(font != null) switch(metric) {
+				case 2:
+					m = this.__getLineMetricSubRangesNotNull(specificLine,0) + this.__getLineMetricSubRangesNotNull(specificLine,1) + this.__getLineMetricSubRangesNotNull(specificLine,3);
+					break;
+				case 0:
+					m = font.get_ascender() / font.get_unitsPerEM() * this.__textFormat.size;
+					break;
+				case 1:
+					m = Math.abs(font.get_descender() / font.get_unitsPerEM() * this.__textFormat.size);
+					break;
+				case 3:
+					m = this.__textFormat.leading;
+					break;
+				default:
+					m = 0;
+				}
+			}
+			if(m > best_m) best_m = m;
+			m = 0;
+		}
+		return best_m;
 	}
 	,__getPosition: function(x,y) {
 		var value = this.get_text();
@@ -55451,7 +55812,8 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 		}
 		return false;
 	}
-	,__measureText: function() {
+	,__measureText: function(condense) {
+		if(condense == null) condense = true;
 		if(this.__context == null) {
 			this.__canvas = window.document.createElement("canvas");
 			this.__context = this.__canvas.getContext("2d");
@@ -55471,6 +55833,57 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 			}
 			return measurements;
 		}
+	}
+	,__measureTextSub: function(condense) {
+		if(this.__textLayout == null) this.__textLayout = new lime.text.TextLayout();
+		if(this.__ranges == null) return this.__measureTextSubRangesNull(condense); else return this.__measureTextSubRangesNotNull(condense);
+		return null;
+	}
+	,__measureTextSubRangesNull: function(condense) {
+		var font = this.__getFontInstance(this.__textFormat);
+		var width = 0.0;
+		var widths = [];
+		if(font != null && this.__textFormat.size != null) {
+			this.__textLayout.set_text(null);
+			this.__textLayout.set_font(font);
+			this.__textLayout.set_size(this.__textFormat.size | 0);
+			this.__textLayout.set_text(this.__text);
+			var _g = 0;
+			var _g1 = this.__textLayout.positions;
+			while(_g < _g1.length) {
+				var position = _g1[_g];
+				++_g;
+				if(condense) width += position.advance.x; else widths.push(position.advance.x);
+			}
+		}
+		if(condense) widths.push(width);
+		return widths;
+	}
+	,__measureTextSubRangesNotNull: function(condense) {
+		var measurements = [];
+		var _g = 0;
+		var _g1 = this.__ranges;
+		while(_g < _g1.length) {
+			var range = _g1[_g];
+			++_g;
+			var font = this.__getFontInstance(range.format);
+			var width = 0.0;
+			if(font != null && range.format.size != null) {
+				this.__textLayout.set_text(null);
+				this.__textLayout.set_font(font);
+				this.__textLayout.set_size(range.format.size | 0);
+				this.__textLayout.set_text(this.get_text().substring(range.start,range.end));
+				var _g2 = 0;
+				var _g3 = this.__textLayout.positions;
+				while(_g2 < _g3.length) {
+					var position = _g3[_g2];
+					++_g2;
+					if(condense) width += position.advance.x; else measurements.push(position.advance.x);
+				}
+			}
+			if(condense) measurements.push(width);
+		}
+		return measurements;
 	}
 	,__measureTextWithDOM: function() {
 		var div = this.__div;
@@ -55534,13 +55947,6 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 		this.__selectionStart = this.__hiddenInput.selectionStart;
 		this.__dirty = true;
 	}
-	,stage_onFocusOut: function(event) {
-		this.__cursorPosition = -1;
-		this.__hasFocus = false;
-		this.__stopCursorTimer();
-		this.__hiddenInput.blur();
-		this.__dirty = true;
-	}
 	,stage_onMouseMove: function(event) {
 		if(this.__hasFocus && this.__selectionStart >= 0) {
 			this.__cursorPosition = this.__getPosition(event.localX,event.localY);
@@ -55548,16 +55954,29 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 		}
 	}
 	,stage_onMouseUp: function(event) {
-		var upPos = this.__getPosition(event.localX,event.localY);
-		var leftPos;
-		var rightPos;
-		leftPos = Std["int"](Math.min(this.__selectionStart,upPos));
-		rightPos = Std["int"](Math.max(this.__selectionStart,upPos));
-		this.__selectionStart = leftPos;
-		this.__cursorPosition = rightPos;
 		this.stage.removeEventListener(openfl.events.MouseEvent.MOUSE_MOVE,$bind(this,this.stage_onMouseMove));
-		this.stage.addEventListener(openfl.events.MouseEvent.MOUSE_UP,$bind(this,this.stage_onMouseUp));
-		this.stage.set_focus(this);
+		this.stage.removeEventListener(openfl.events.MouseEvent.MOUSE_UP,$bind(this,this.stage_onMouseUp));
+		if(this.stage.get_focus() == this) {
+			var upPos = this.__getPosition(event.localX,event.localY);
+			var leftPos;
+			var rightPos;
+			leftPos = Std["int"](Math.min(this.__selectionStart,upPos));
+			rightPos = Std["int"](Math.max(this.__selectionStart,upPos));
+			this.__selectionStart = leftPos;
+			this.__cursorPosition = rightPos;
+			this.this_onFocusIn(null);
+		}
+	}
+	,this_onAddedToStage: function(event) {
+		this.addEventListener(openfl.events.FocusEvent.FOCUS_IN,$bind(this,this.this_onFocusIn));
+		this.addEventListener(openfl.events.FocusEvent.FOCUS_OUT,$bind(this,this.this_onFocusOut));
+		this.__hiddenInput.addEventListener("keydown",$bind(this,this.input_onKeyDown));
+		this.__hiddenInput.addEventListener("keyup",$bind(this,this.input_onKeyUp));
+		this.__hiddenInput.addEventListener("input",$bind(this,this.input_onKeyUp));
+		this.addEventListener(openfl.events.MouseEvent.MOUSE_DOWN,$bind(this,this.this_onMouseDown));
+		if(this.stage.get_focus() == this) this.this_onFocusIn(null);
+	}
+	,this_onFocusIn: function(event) {
 		if(this.__cursorPosition < 0) {
 			this.__cursorPosition = this.__text.length;
 			this.__selectionStart = this.__cursorPosition;
@@ -55569,13 +55988,14 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 		this.__startCursorTimer();
 		this.__hasFocus = true;
 		this.__dirty = true;
+		this.stage.addEventListener(openfl.events.MouseEvent.MOUSE_UP,$bind(this,this.stage_onMouseUp));
 	}
-	,this_onAddedToStage: function(event) {
-		this.stage.addEventListener(openfl.events.FocusEvent.FOCUS_OUT,$bind(this,this.stage_onFocusOut));
-		this.__hiddenInput.addEventListener("keydown",$bind(this,this.input_onKeyDown));
-		this.__hiddenInput.addEventListener("keyup",$bind(this,this.input_onKeyUp));
-		this.__hiddenInput.addEventListener("input",$bind(this,this.input_onKeyUp));
-		this.addEventListener(openfl.events.MouseEvent.MOUSE_DOWN,$bind(this,this.this_onMouseDown));
+	,this_onFocusOut: function(event) {
+		this.__cursorPosition = -1;
+		this.__hasFocus = false;
+		this.__stopCursorTimer();
+		this.__hiddenInput.blur();
+		this.__dirty = true;
 	}
 	,this_onMouseDown: function(event) {
 		this.__selectionStart = this.__getPosition(event.localX,event.localY);
@@ -55583,7 +56003,8 @@ openfl.text.TextField.prototype = $extend(openfl.display.InteractiveObject.proto
 		this.stage.addEventListener(openfl.events.MouseEvent.MOUSE_UP,$bind(this,this.stage_onMouseUp));
 	}
 	,this_onRemovedFromStage: function(event) {
-		if(this.stage != null) this.stage.removeEventListener(openfl.events.FocusEvent.FOCUS_OUT,$bind(this,this.stage_onFocusOut));
+		this.removeEventListener(openfl.events.FocusEvent.FOCUS_IN,$bind(this,this.this_onFocusIn));
+		this.removeEventListener(openfl.events.FocusEvent.FOCUS_OUT,$bind(this,this.this_onFocusOut));
 		if(this.__hiddenInput != null) this.__hiddenInput.removeEventListener("keydown",$bind(this,this.input_onKeyDown));
 		if(this.__hiddenInput != null) this.__hiddenInput.removeEventListener("keyup",$bind(this,this.input_onKeyUp));
 		if(this.__hiddenInput != null) this.__hiddenInput.removeEventListener("input",$bind(this,this.input_onKeyUp));
@@ -57024,14 +57445,13 @@ org.swiftsuspenders.errors = {};
 org.swiftsuspenders.errors.InjectorError = function(message,id) {
 	if(id == null) id = 0;
 	if(message == null) message = "";
-	openfl.errors.Error.call(this,message,id);
+	haxe.Log.trace(Std.string(message) + " " + Std.string(id),{ fileName : "InjectorError.hx", lineNumber : 19, className : "org.swiftsuspenders.errors.InjectorError", methodName : "new"});
 };
 $hxClasses["org.swiftsuspenders.errors.InjectorError"] = org.swiftsuspenders.errors.InjectorError;
 org.swiftsuspenders.errors.InjectorError.__name__ = ["org","swiftsuspenders","errors","InjectorError"];
-org.swiftsuspenders.errors.InjectorError.__super__ = openfl.errors.Error;
-org.swiftsuspenders.errors.InjectorError.prototype = $extend(openfl.errors.Error.prototype,{
+org.swiftsuspenders.errors.InjectorError.prototype = {
 	__class__: org.swiftsuspenders.errors.InjectorError
-});
+};
 org.swiftsuspenders.errors.InjectorInterfaceConstructionError = function(message,id) {
 	if(id == null) id = 0;
 	if(message == null) message = "";
@@ -60125,6 +60545,7 @@ robotlegs.bender.extensions.mediatorMap.impl.MediatorFactory.prototype = {
 				robotlegs.bender.framework.impl.ApplyHooks.call(mapping.get_hooks(),this._injector);
 				this._injector.unmap(mediatorClass);
 			}
+			haxe.Log.trace("3",{ fileName : "MediatorFactory.hx", lineNumber : 157, className : "robotlegs.bender.extensions.mediatorMap.impl.MediatorFactory", methodName : "createMediator"});
 			this.addMediator(mediator,item,mapping);
 		}
 		return mediator;
@@ -61151,8 +61572,10 @@ robotlegs.bender.extensions.stage3D.base.api.IRenderer.prototype = {
 	,addLayer: null
 	,addLayerAt: null
 	,removeLayer: null
+	,getLayerIndex: null
 	,onReady: null
 	,stage3D: null
+	,context3D: null
 	,profile: null
 	,numLayers: null
 	,__class__: robotlegs.bender.extensions.stage3D.base.api.IRenderer
@@ -61173,10 +61596,14 @@ robotlegs.bender.extensions.stage3D.base.api.IViewport.prototype = {
 	,onChange: null
 	,__class__: robotlegs.bender.extensions.stage3D.base.api.IViewport
 };
-robotlegs.bender.extensions.stage3D.base.impl.Renderer = function() {
+robotlegs.bender.extensions.stage3D.base.impl.Renderer = function(context) {
 	this.freeFreeStage3DIndex = 0;
 	this.layers = new Array();
 	this._onReady = new msignal.Signal0();
+	this.set_id(Math.floor(Math.random() * 100000));
+	haxe.Log.trace("new Renderer",{ fileName : "Renderer.hx", lineNumber : 72, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "new"});
+	this._injector = context.get_injector();
+	this._logger = context.getLogger(this);
 };
 $hxClasses["robotlegs.bender.extensions.stage3D.base.impl.Renderer"] = robotlegs.bender.extensions.stage3D.base.impl.Renderer;
 robotlegs.bender.extensions.stage3D.base.impl.Renderer.__name__ = ["robotlegs","bender","extensions","stage3D","base","impl","Renderer"];
@@ -61191,42 +61618,51 @@ robotlegs.bender.extensions.stage3D.base.impl.Renderer.prototype = {
 	,_profile: null
 	,freeFreeStage3DIndex: null
 	,_stage3D: null
+	,_context3D: null
 	,antiAlias: null
 	,onReady: null
 	,stage3D: null
+	,context3D: null
 	,profile: null
 	,numLayers: null
-	,Renderer: function(context) {
-		this._injector = context.get_injector();
-		this._logger = context.getLogger(this);
+	,get_id: function() {
+		return this._id;
 	}
+	,set_id: function(value) {
+		return this._id = value;
+	}
+	,_id: null
 	,init: function(profile,antiAlias) {
 		if(antiAlias == null) antiAlias = 0;
+		haxe.Log.trace("Renderer init",{ fileName : "Renderer.hx", lineNumber : 79, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "init"});
 		this.antiAlias = antiAlias;
 		this._profile = profile;
-		this._onReady.dispatch();
 		this._stage3D = this.contextView.view.stage.stage3Ds.data[this.freeFreeStage3DIndex];
+		this._stage3D.x = Math.random() * 2000;
 		this.get_stage3D().addEventListener(openfl.events.Event.CONTEXT3D_CREATE,$bind(this,this.contextCreatedHandler));
 		var renderMode = openfl.display3D.Context3DRenderMode.AUTO;
 		this.get_stage3D().requestContext3D(Std.string(renderMode));
 		this.freeFreeStage3DIndex++;
 	}
 	,contextCreatedHandler: function(e) {
-		this.get_stage3D().context3D.configureBackBuffer(this.contextView.view.stage.stageWidth,this.contextView.view.stage.stageHeight,this.antiAlias,true);
-		this._onReady.dispatch();
+		this._context3D = this.get_stage3D().context3D;
+		this.get_context3D().configureBackBuffer(this.contextView.view.stage.stageWidth,this.contextView.view.stage.stageHeight,this.antiAlias,true);
+		this.get_context3D().setStencilActions(1032,514,7683);
 		this.viewport.init();
 		this.viewport.get_onChange().add($bind(this,this.OnViewportChange));
 		this.viewport.get_rect().setTo(0,0,this.contextView.view.stage.stageWidth,this.contextView.view.stage.stageHeight);
+		haxe.Log.trace("context3D = " + Std.string(this.get_context3D()),{ fileName : "Renderer.hx", lineNumber : 108, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "contextCreatedHandler"});
+		this._onReady.dispatch();
 	}
 	,OnViewportChange: function() {
 		this.get_stage3D().x = this.viewport.get_rect().x;
 		this.get_stage3D().y = this.viewport.get_rect().y;
-		if(this.get_stage3D().context3D != null) {
+		if(this.get_context3D() != null) {
 			var width = this.viewport.get_rect().width;
 			if(width < 32) width = 32;
 			var height = this.viewport.get_rect().height;
 			if(height < 32) height = 32;
-			this.get_stage3D().context3D.configureBackBuffer(width,height,this.antiAlias,true);
+			this.get_context3D().configureBackBuffer(width,height,this.antiAlias,true);
 		}
 		var _g1 = 0;
 		var _g = this.layers.length;
@@ -61242,11 +61678,13 @@ robotlegs.bender.extensions.stage3D.base.impl.Renderer.prototype = {
 		this.contextView.view.stage.removeEventListener(openfl.events.Event.ENTER_FRAME,$bind(this,this.Update));
 	}
 	,addLayer: function(layer) {
+		haxe.Log.trace("addLayer = " + Std.string(layer),{ fileName : "Renderer.hx", lineNumber : 145, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "addLayer"});
 		this.layers.push(layer);
 	}
 	,addLayerAt: function(layer,index) {
+		haxe.Log.trace("addLayerAt = " + index + Std.string(layer),{ fileName : "Renderer.hx", lineNumber : 151, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "addLayerAt"});
 		if(this.layers.length < index) {
-			haxe.Log.trace("[Renderer, addLayerAt], index outside bounds, reverting to addLayer",{ fileName : "Renderer.hx", lineNumber : 120, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "addLayerAt"});
+			haxe.Log.trace("[Renderer, addLayerAt], index outside bounds, reverting to addLayer",{ fileName : "Renderer.hx", lineNumber : 153, className : "robotlegs.bender.extensions.stage3D.base.impl.Renderer", methodName : "addLayerAt"});
 			this.addLayer(layer);
 			return;
 		}
@@ -61272,27 +61710,39 @@ robotlegs.bender.extensions.stage3D.base.impl.Renderer.prototype = {
 			if(this.layers[i] == layer) this.layers.splice(i,1);
 		}
 	}
+	,getLayerIndex: function(layer) {
+		var _g1 = 0;
+		var _g = this.layers.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			if(this.layers[i] == layer) return i;
+		}
+		return -1;
+	}
 	,render: function() {
 		this.Update(null);
 	}
 	,Update: function(e) {
 		if(this.layers.length == 0) return;
 		if(this._stage3D == null) return;
-		if(this._stage3D.context3D == null) return;
-		this.get_stage3D().context3D.clear();
+		if(this.get_context3D() == null) return;
+		this.get_context3D().clear();
 		var _g1 = 0;
 		var _g = this.layers.length;
 		while(_g1 < _g) {
 			var i = _g1++;
 			this.layers[i].process();
 		}
-		this.get_stage3D().context3D.present();
+		this.get_context3D().present();
 	}
 	,get_onReady: function() {
 		return this._onReady;
 	}
 	,get_stage3D: function() {
 		return this._stage3D;
+	}
+	,get_context3D: function() {
+		return this._context3D;
 	}
 	,get_profile: function() {
 		return this._profile;
@@ -61301,7 +61751,7 @@ robotlegs.bender.extensions.stage3D.base.impl.Renderer.prototype = {
 		return this.layers.length;
 	}
 	,__class__: robotlegs.bender.extensions.stage3D.base.impl.Renderer
-	,__properties__: {get_numLayers:"get_numLayers",get_profile:"get_profile",get_stage3D:"get_stage3D",get_onReady:"get_onReady"}
+	,__properties__: {set_id:"set_id",get_id:"get_id",get_numLayers:"get_numLayers",get_profile:"get_profile",get_context3D:"get_context3D",get_stage3D:"get_stage3D",get_onReady:"get_onReady"}
 };
 robotlegs.bender.extensions.stage3D.base.impl.Stack = function(context) {
 	this.initialized = false;
@@ -61547,6 +61997,33 @@ robotlegs.bender.extensions.stage3D.starling.api.IStarlingViewMap.prototype = {
 	,removeStarlingView: null
 	,__class__: robotlegs.bender.extensions.stage3D.starling.api.IStarlingViewMap
 };
+robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer = function() {
+};
+$hxClasses["robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer"] = robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer;
+robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer.__name__ = ["robotlegs","bender","extensions","stage3D","starling","impl","PlaceHolderLayer"];
+robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer.__interfaces__ = [robotlegs.bender.extensions.stage3D.base.api.ILayer];
+robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer.prototype = {
+	_iRenderer: null
+	,starling: null
+	,_rect: null
+	,rect: null
+	,get_iRenderer: function() {
+		return this._iRenderer;
+	}
+	,set_iRenderer: function(value) {
+		return this._iRenderer = value;
+	}
+	,get_rect: function() {
+		return this._rect;
+	}
+	,set_rect: function(value) {
+		return this._rect = value;
+	}
+	,process: function() {
+	}
+	,__class__: robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer
+	,__properties__: {set_iRenderer:"set_iRenderer",get_iRenderer:"get_iRenderer",set_rect:"set_rect"}
+};
 robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection = function(starlingCollectionData) {
 	this.starlings = (function($this) {
 		var $r;
@@ -61650,22 +62127,27 @@ robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer.prototype 
 			starling.core.Starling.set_multitouchEnabled(true);
 			starling.core.Starling.set_handleLostContext(true);
 		}
+		haxe.Log.trace("renderer.stage3D = " + this.renderer.get_id(),{ fileName : "StarlingInitializer.hx", lineNumber : 35, className : "robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer", methodName : "addLayer"});
+		haxe.Log.trace("renderer.stage3D = " + Std.string(this.renderer.get_stage3D()),{ fileName : "StarlingInitializer.hx", lineNumber : 38, className : "robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer", methodName : "addLayer"});
+		haxe.Log.trace("renderer.context3D = " + Std.string(this.renderer.get_context3D()),{ fileName : "StarlingInitializer.hx", lineNumber : 39, className : "robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer", methodName : "addLayer"});
+		haxe.Log.trace("renderer.stage3D.context3D = " + Std.string(this.renderer.get_stage3D().context3D),{ fileName : "StarlingInitializer.hx", lineNumber : 40, className : "robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer", methodName : "addLayer"});
 		var starling1 = new starling.core.Starling(ViewClass,this.contextView.view.stage,viewRectangle,this.renderer.get_stage3D(),"auto",this.renderer.get_profile());
 		starling1.set_simulateMultitouch(true);
 		starling1.set_shareContext(true);
 		starling1.start();
 		if(this.get_debug()) starling1.set_showStats(true);
 		this.context.configure(new robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection([starling1,id]));
-		var insertIndex = this.renderer.get_numLayers();
-		haxe.Log.trace("addLayer",{ fileName : "StarlingInitializer.hx", lineNumber : 48, className : "robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer", methodName : "addLayer"});
+		var placeHolderLayer = new robotlegs.bender.extensions.stage3D.starling.impl.PlaceHolderLayer();
+		if(index == -1) this.renderer.addLayer(placeHolderLayer); else this.renderer.addLayerAt(placeHolderLayer,index);
+		var insertIndex = this.renderer.getLayerIndex(placeHolderLayer);
 		var onStarlingReady = function(e) {
-			haxe.Log.trace("onStarlingReady",{ fileName : "StarlingInitializer.hx", lineNumber : 52, className : "robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer", methodName : "addLayer"});
 			var starling1;
 			starling1 = js.Boot.__cast(e.get_target() , starling.core.Starling);
 			var layer;
 			layer = js.Boot.__cast(starling1.get_root() , robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer);
 			layer.setStarling(starling1);
-			if(index == -1) _g.renderer.addLayerAt(layer,insertIndex); else _g.renderer.addLayerAt(layer,index);
+			_g.renderer.removeLayer(placeHolderLayer);
+			_g.renderer.addLayerAt(layer,insertIndex);
 		};
 		starling1.addEventListener(starling.events.Event.ROOT_CREATED,onStarlingReady);
 	}
@@ -61969,6 +62451,7 @@ robotlegs.bender.extensions.viewManager.impl.ContainerRegistry.prototype = $exte
 	}
 	,_bindingByContainer: null
 	,addContainer: function(container) {
+		haxe.Log.trace("addContainer = " + Std.string(container),{ fileName : "ContainerRegistry.hx", lineNumber : 69, className : "robotlegs.bender.extensions.viewManager.impl.ContainerRegistry", methodName : "addContainer"});
 		if(this._bindingByContainer.h[container.__id__] == null) {
 			var v = this.createBinding(container);
 			this._bindingByContainer.set(container,v);
@@ -62260,6 +62743,7 @@ robotlegs.bender.extensions.viewManager.impl.StageObserver.prototype = {
 		this.traver.childAdded.add($bind(this,this.OnChildAdded));
 	}
 	,OnChildAdded: function(display) {
+		haxe.Log.trace("add: " + Std.string(display),{ fileName : "StageObserver.hx", lineNumber : 127, className : "robotlegs.bender.extensions.viewManager.impl.StageObserver", methodName : "OnChildAdded"});
 		this.addView(display);
 	}
 	,removeRootListener: function(container) {
@@ -62267,10 +62751,14 @@ robotlegs.bender.extensions.viewManager.impl.StageObserver.prototype = {
 	}
 	,addView: function(view) {
 		var qcn = org.swiftsuspenders.utils.CallProxy.replaceClassName(Type.getClass(view));
+		haxe.Log.trace("qcn = " + qcn,{ fileName : "StageObserver.hx", lineNumber : 154, className : "robotlegs.bender.extensions.viewManager.impl.StageObserver", methodName : "addView"});
 		var filtered = this._filter.match(qcn);
 		if(filtered) return;
 		var type = Type.getClass(view);
+		haxe.Log.trace("type = " + Std.string(type),{ fileName : "StageObserver.hx", lineNumber : 161, className : "robotlegs.bender.extensions.viewManager.impl.StageObserver", methodName : "addView"});
 		var binding = this._registry.findParentBinding(view);
+		haxe.Log.trace("binding.container = " + Std.string(binding.get_container()),{ fileName : "StageObserver.hx", lineNumber : 164, className : "robotlegs.bender.extensions.viewManager.impl.StageObserver", methodName : "addView"});
+		haxe.Log.trace("binding = " + Std.string(binding),{ fileName : "StageObserver.hx", lineNumber : 165, className : "robotlegs.bender.extensions.viewManager.impl.StageObserver", methodName : "addView"});
 		while(binding != null) {
 			binding.handleView(view,type);
 			binding = binding.get_parent();
@@ -63030,10 +63518,10 @@ robotlegs.bender.extensions.vigilance.VigilanceExtension.prototype = {
 				return $r;
 			}($this));
 			return $r;
-		}(this))) throw new robotlegs.bender.extensions.vigilance.VigilantError(this._messageParser.parseMessage(message,params));
+		}(this))) new robotlegs.bender.extensions.vigilance.VigilantError(this._messageParser.parseMessage(message,params));
 	}
 	,mappingOverrideHandler: function(event) {
-		throw new org.swiftsuspenders.errors.InjectorError("Injector mapping override for type " + Std.string(event.mappedType) + " with name " + event.mappedName);
+		new org.swiftsuspenders.errors.InjectorError("Injector mapping override for type " + Std.string(event.mappedType) + " with name " + event.mappedName);
 	}
 	,__class__: robotlegs.bender.extensions.vigilance.VigilanceExtension
 };
@@ -63048,14 +63536,13 @@ robotlegs.bender.extensions.vigilance.MetadataChecker.prototype = {
 	,__class__: robotlegs.bender.extensions.vigilance.MetadataChecker
 };
 robotlegs.bender.extensions.vigilance.VigilantError = function(message) {
-	openfl.errors.Error.call(this,message);
+	haxe.Log.trace(message,{ fileName : "VigilantError.hx", lineNumber : 30, className : "robotlegs.bender.extensions.vigilance.VigilantError", methodName : "new"});
 };
 $hxClasses["robotlegs.bender.extensions.vigilance.VigilantError"] = robotlegs.bender.extensions.vigilance.VigilantError;
 robotlegs.bender.extensions.vigilance.VigilantError.__name__ = ["robotlegs","bender","extensions","vigilance","VigilantError"];
-robotlegs.bender.extensions.vigilance.VigilantError.__super__ = openfl.errors.Error;
-robotlegs.bender.extensions.vigilance.VigilantError.prototype = $extend(openfl.errors.Error.prototype,{
+robotlegs.bender.extensions.vigilance.VigilantError.prototype = {
 	__class__: robotlegs.bender.extensions.vigilance.VigilantError
-});
+};
 robotlegs.bender.framework.api.IContext = function() { };
 $hxClasses["robotlegs.bender.framework.api.IContext"] = robotlegs.bender.framework.api.IContext;
 robotlegs.bender.framework.api.IContext.__name__ = ["robotlegs","bender","framework","api","IContext"];
@@ -64064,6 +64551,7 @@ robotlegs.bender.framework.impl.MessageRunner = function(message,handlers,callba
 	this._message = message;
 	this._handlers = handlers;
 	this._callback = callback;
+	haxe.Log.trace("_handlers = " + Std.string(this._handlers),{ fileName : "MessageDispatcher.hx", lineNumber : 128, className : "robotlegs.bender.framework.impl.MessageRunner", methodName : "new"});
 };
 $hxClasses["robotlegs.bender.framework.impl.MessageRunner"] = robotlegs.bender.framework.impl.MessageRunner;
 robotlegs.bender.framework.impl.MessageRunner.__name__ = ["robotlegs","bender","framework","impl","MessageRunner"];
@@ -64089,10 +64577,24 @@ robotlegs.bender.framework.impl.MessageRunner.prototype = {
 				};
 			})(handled));
 			return;
-		} else haxe.Log.trace("Bad handler signature",{ fileName : "MessageDispatcher.hx", lineNumber : 190, className : "robotlegs.bender.framework.impl.MessageRunner", methodName : "next"});
+		} else haxe.Log.trace("Bad handler signature",{ fileName : "MessageDispatcher.hx", lineNumber : 192, className : "robotlegs.bender.framework.impl.MessageRunner", methodName : "next"});
 		if(this._callback != null) robotlegs.bender.framework.impl.SafelyCallBack.call(this._callback,null,this._message);
 	}
 	,__class__: robotlegs.bender.framework.impl.MessageRunner
+};
+robotlegs.bender.framework.impl.ObjectHandler = function(matcher,handler) {
+	this._matcher = matcher;
+	this._handler = handler;
+};
+$hxClasses["robotlegs.bender.framework.impl.ObjectHandler"] = robotlegs.bender.framework.impl.ObjectHandler;
+robotlegs.bender.framework.impl.ObjectHandler.__name__ = ["robotlegs","bender","framework","impl","ObjectHandler"];
+robotlegs.bender.framework.impl.ObjectHandler.prototype = {
+	_matcher: null
+	,_handler: null
+	,handle: function(object) {
+		if(this._matcher.matches(object)) this._handler(object);
+	}
+	,__class__: robotlegs.bender.framework.impl.ObjectHandler
 };
 robotlegs.bender.framework.impl.ObjectMatcher = function() {
 };
@@ -64128,20 +64630,6 @@ robotlegs.bender.framework.impl.ObjectProcessor.prototype = {
 		this._handlers = [];
 	}
 	,__class__: robotlegs.bender.framework.impl.ObjectProcessor
-};
-robotlegs.bender.framework.impl.ObjectHandler = function(matcher,handler) {
-	this._matcher = matcher;
-	this._handler = handler;
-};
-$hxClasses["robotlegs.bender.framework.impl.ObjectHandler"] = robotlegs.bender.framework.impl.ObjectHandler;
-robotlegs.bender.framework.impl.ObjectHandler.__name__ = ["robotlegs","bender","framework","impl","ObjectHandler"];
-robotlegs.bender.framework.impl.ObjectHandler.prototype = {
-	_matcher: null
-	,_handler: null
-	,handle: function(object) {
-		if(this._matcher.matches(object)) this._handler(object);
-	}
-	,__class__: robotlegs.bender.framework.impl.ObjectHandler
 };
 robotlegs.bender.framework.impl.Pin = function(dispatcher) {
 	this._instances = new haxe.ds.StringMap();
@@ -65321,6 +65809,7 @@ starling.animation.Tween.prototype = $extend(starling.events.EventDispatcher.pro
 });
 starling.core = {};
 starling.core.RenderSupport = function() {
+	this.mStencilReferenceValue = 0;
 	this.mMasks = (function($this) {
 		var $r;
 		var this1;
@@ -65485,7 +65974,7 @@ starling.core.RenderSupport.prototype = {
 		this.applyClipRect();
 	}
 	,setOrthographicProjection: function(x,y,width,height) {
-		haxe.Log.trace("Deprecated, use setProjectionMatrix instead",{ fileName : "RenderSupport.hx", lineNumber : 196, className : "starling.core.RenderSupport", methodName : "setOrthographicProjection"});
+		haxe.Log.trace("Deprecated, use setProjectionMatrix instead",{ fileName : "RenderSupport.hx", lineNumber : 197, className : "starling.core.RenderSupport", methodName : "setOrthographicProjection"});
 		this.setProjectionMatrix(x,y,width,height);
 	}
 	,loadIdentity: function() {
@@ -65628,6 +66117,7 @@ starling.core.RenderSupport.prototype = {
 		} else context.setScissorRectangle(null);
 	}
 	,mMasks: null
+	,mStencilReferenceValue: null
 	,pushMask: function(mask) {
 		var this1 = this.mMasks;
 		var key = this.mMasks.length;
@@ -65643,12 +66133,13 @@ starling.core.RenderSupport.prototype = {
 			}
 		}
 		this1.data[key] = mask;
+		this.mStencilReferenceValue++;
 		var context = starling.core.Starling.get_Context();
 		if(context == null) return;
 		this.finishQuadBatch();
 		context.setStencilActions(1032,514,7682);
 		this.drawMask(mask);
-		context.setStencilReferenceValue(this.mMasks.length);
+		context.setStencilReferenceValue(this.mStencilReferenceValue);
 		context.setStencilActions(1032,514,7680);
 	}
 	,popMask: function() {
@@ -65662,12 +66153,13 @@ starling.core.RenderSupport.prototype = {
 			}
 		}
 		mask = value;
+		this.mStencilReferenceValue--;
 		var context = starling.core.Starling.get_Context();
 		if(context == null) return;
 		this.finishQuadBatch();
 		context.setStencilActions(1032,514,7683);
 		this.drawMask(mask);
-		context.setStencilReferenceValue(this.mMasks.length);
+		context.setStencilReferenceValue(this.mStencilReferenceValue);
 		context.setStencilActions(1032,514,7680);
 	}
 	,drawMask: function(mask) {
@@ -65677,6 +66169,14 @@ starling.core.RenderSupport.prototype = {
 		mask.render(this,0.0);
 		this.finishQuadBatch();
 		this.popMatrix();
+	}
+	,get_stencilReferenceValue: function() {
+		return this.mStencilReferenceValue;
+	}
+	,set_stencilReferenceValue: function(value) {
+		this.mStencilReferenceValue = value;
+		if(starling.core.Starling.get_current().get_contextValid()) starling.core.Starling.get_Context().setStencilReferenceValue(value);
+		return this.mStencilReferenceValue;
 	}
 	,batchQuad: function(quad,parentAlpha,texture,smoothing) {
 		if(this.mQuadBatches[this.mCurrentQuadBatchID].isStateChange(quad.get_tinted(),parentAlpha,texture,smoothing,this.mBlendMode)) this.finishQuadBatch();
@@ -65745,11 +66245,12 @@ starling.core.RenderSupport.prototype = {
 		return this.mDrawCount;
 	}
 	,__class__: starling.core.RenderSupport
-	,__properties__: {get_drawCount:"get_drawCount",set_renderTarget:"set_renderTarget",get_renderTarget:"get_renderTarget",set_blendMode:"set_blendMode",get_blendMode:"get_blendMode",set_projectionMatrix3D:"set_projectionMatrix3D",get_projectionMatrix3D:"get_projectionMatrix3D",get_mvpMatrix3D:"get_mvpMatrix3D",set_projectionMatrix:"set_projectionMatrix",get_projectionMatrix:"get_projectionMatrix",get_modelViewMatrix:"get_modelViewMatrix",get_mvpMatrix:"get_mvpMatrix"}
+	,__properties__: {set_stencilReferenceValue:"set_stencilReferenceValue",get_stencilReferenceValue:"get_stencilReferenceValue",get_drawCount:"get_drawCount",set_renderTarget:"set_renderTarget",get_renderTarget:"get_renderTarget",set_blendMode:"set_blendMode",get_blendMode:"get_blendMode",set_projectionMatrix3D:"set_projectionMatrix3D",get_projectionMatrix3D:"get_projectionMatrix3D",get_mvpMatrix3D:"get_mvpMatrix3D",set_projectionMatrix:"set_projectionMatrix",get_projectionMatrix:"get_projectionMatrix",get_modelViewMatrix:"get_modelViewMatrix",get_mvpMatrix:"get_mvpMatrix"}
 };
 starling.core.Starling = function(rootClass,stage,viewPort,stage3D,renderMode,profile) {
 	if(profile == null) profile = "baselineConstrained";
 	if(renderMode == null) renderMode = "auto";
+	this.mShareContext = false;
 	starling.events.EventDispatcher.call(this);
 	if(stage == null) throw new openfl.errors.ArgumentError("Stage must not be null");
 	if(viewPort == null) viewPort = new openfl.geom.Rectangle(0,0,stage.stageWidth,stage.stageHeight);
@@ -65796,12 +66297,16 @@ starling.core.Starling = function(rootClass,stage,viewPort,stage3D,renderMode,pr
 	stage.addEventListener(openfl.events.Event.MOUSE_LEAVE,$bind(this,this.onMouseLeave),false,0,true);
 	this.mStage3D.addEventListener(openfl.events.Event.CONTEXT3D_CREATE,$bind(this,this.onContextCreated),false,10,true);
 	this.mStage3D.addEventListener(openfl.events.ErrorEvent.ERROR,$bind(this,this.onStage3DError),false,10,true);
+	haxe.Log.trace("mStage3D " + Std.string(this.mStage3D),{ fileName : "Starling.hx", lineNumber : 352, className : "starling.core.Starling", methodName : "new"});
+	haxe.Log.trace("mStage3D.x " + this.mStage3D.x,{ fileName : "Starling.hx", lineNumber : 353, className : "starling.core.Starling", methodName : "new"});
+	haxe.Log.trace("mStage3D.context3D " + Std.string(this.mStage3D.context3D),{ fileName : "Starling.hx", lineNumber : 354, className : "starling.core.Starling", methodName : "new"});
+	haxe.Log.trace("mStage3D.context3D.driverInfo " + this.mStage3D.context3D.driverInfo,{ fileName : "Starling.hx", lineNumber : 355, className : "starling.core.Starling", methodName : "new"});
 	if(this.mStage3D.context3D != null && this.mStage3D.context3D.driverInfo != "Disposed") {
 		if(profile == "auto" || (profile instanceof Array) && profile.__enum__ == null) throw new openfl.errors.ArgumentError("When sharing the context3D, " + "the actual profile has to be supplied"); else if(Object.prototype.hasOwnProperty.call(this.mStage3D.context3D,"profile")) this.mProfile = Reflect.getProperty(this.mStage3D.context3D,"profile"); else this.mProfile = profile;
 		this.mShareContext = true;
 		haxe.Timer.delay($bind(this,this.initialize),1);
 	} else {
-		if(!starling.utils.SystemUtil.get_supportsDepthAndStencil()) haxe.Log.trace("[Starling] Mask support requires 'depthAndStencil' to be enabled" + " in the application descriptor.",{ fileName : "Starling.hx", lineNumber : 369, className : "starling.core.Starling", methodName : "new"});
+		if(!starling.utils.SystemUtil.get_supportsDepthAndStencil()) haxe.Log.trace("[Starling] Mask support requires 'depthAndStencil' to be enabled" + " in the application descriptor.",{ fileName : "Starling.hx", lineNumber : 374, className : "starling.core.Starling", methodName : "new"});
 		this.mShareContext = false;
 		this.requestContext3D(stage3D,renderMode,profile);
 	}
@@ -65834,14 +66339,14 @@ starling.core.Starling.get_multitouchEnabled = function() {
 	return openfl.ui.Multitouch.get_inputMode() == openfl.ui.MultitouchInputMode.TOUCH_POINT;
 };
 starling.core.Starling.set_multitouchEnabled = function(value) {
-	if(starling.core.Starling.sCurrent != null) throw new openfl.errors.IllegalOperationError("1 'multitouchEnabled' must be set before Starling instance is created"); else openfl.ui.Multitouch.set_inputMode(value?openfl.ui.MultitouchInputMode.TOUCH_POINT:openfl.ui.MultitouchInputMode.NONE);
+	if(starling.core.Starling.sCurrent != null) throw new openfl.errors.IllegalOperationError("'multitouchEnabled' must be set before Starling instance is created"); else openfl.ui.Multitouch.set_inputMode(value?openfl.ui.MultitouchInputMode.TOUCH_POINT:openfl.ui.MultitouchInputMode.NONE);
 	return value;
 };
 starling.core.Starling.get_handleLostContext = function() {
 	return starling.core.Starling.sHandleLostContext;
 };
 starling.core.Starling.set_handleLostContext = function(value) {
-	if(starling.core.Starling.sCurrent != null) throw new openfl.errors.IllegalOperationError("2 'handleLostContext' must be set before Starling instance is created"); else starling.core.Starling.sHandleLostContext = value;
+	if(starling.core.Starling.sCurrent != null) throw new openfl.errors.IllegalOperationError("'handleLostContext' must be set before Starling instance is created"); else starling.core.Starling.sHandleLostContext = value;
 	return value;
 };
 starling.core.Starling.__super__ = starling.events.EventDispatcher;
@@ -65975,8 +66480,8 @@ starling.core.Starling.prototype = $extend(starling.events.EventDispatcher.proto
 		var v = new haxe.ds.StringMap();
 		this1.set(starling.core.Starling.PROGRAM_DATA_NAME,v);
 		v;
-		haxe.Log.trace("[Starling] Initialization complete.",{ fileName : "Starling.hx", lineNumber : 510, className : "starling.core.Starling", methodName : "initializeGraphicsAPI"});
-		haxe.Log.trace("[Starling] Display Driver:",{ fileName : "Starling.hx", lineNumber : 511, className : "starling.core.Starling", methodName : "initializeGraphicsAPI", customParams : [this.mContext.driverInfo]});
+		haxe.Log.trace("[Starling] Initialization complete.",{ fileName : "Starling.hx", lineNumber : 515, className : "starling.core.Starling", methodName : "initializeGraphicsAPI"});
+		haxe.Log.trace("[Starling] Display Driver:",{ fileName : "Starling.hx", lineNumber : 516, className : "starling.core.Starling", methodName : "initializeGraphicsAPI", customParams : [this.mContext.driverInfo]});
 		this.mContext.setRenderMethod($bind(this,this.onEnterFrame));
 		this.updateViewPort(true);
 		this.dispatchEventWith(openfl.events.Event.CONTEXT3D_CREATE,false,this.mContext);
@@ -66013,7 +66518,7 @@ starling.core.Starling.prototype = $extend(starling.events.EventDispatcher.proto
 		var scaleY = this.mViewPort.height / this.mStage.get_stageHeight();
 		this.mContext.setDepthTest(false,519);
 		this.mContext.setCulling(0);
-		this.mContext.setStencilReferenceValue(0);
+		this.mSupport.set_stencilReferenceValue(0);
 		this.mSupport.set_renderTarget(null);
 		this.mSupport.setProjectionMatrix(this.mViewPort.x < 0?-this.mViewPort.x / scaleX:0.0,this.mViewPort.y < 0?-this.mViewPort.y / scaleY:0.0,this.mClippedViewPort.width / scaleX,this.mClippedViewPort.height / scaleY,this.mStage.get_stageWidth(),this.mStage.get_stageHeight(),this.mStage.get_cameraPosition());
 		if(this.mShareContext == false) starling.core.RenderSupport.Clear(this.mStage.get_color(),1.0);
@@ -66068,7 +66573,7 @@ starling.core.Starling.prototype = $extend(starling.events.EventDispatcher.proto
 		this.get_nativeOverlay().addChild(background);
 		this.get_nativeOverlay().addChild(textField);
 		this.stop(true);
-		haxe.Log.trace("[Starling]",{ fileName : "Starling.hx", lineNumber : 699, className : "starling.core.Starling", methodName : "stopWithFatalError", customParams : [message]});
+		haxe.Log.trace("[Starling]",{ fileName : "Starling.hx", lineNumber : 705, className : "starling.core.Starling", methodName : "stopWithFatalError", customParams : [message]});
 		this.dispatchEventWith(starling.events.Event.FATAL_ERROR,false,message);
 	}
 	,makeCurrent: function() {
@@ -66094,7 +66599,7 @@ starling.core.Starling.prototype = $extend(starling.events.EventDispatcher.proto
 		if(!starling.core.Starling.get_handleLostContext() && this.mContext != null) {
 			event.stopImmediatePropagation();
 			this.stopWithFatalError("The application lost the device context!");
-			haxe.Log.trace("[Starling] Enable 'Starling.handleLostContext' to avoid this error.",{ fileName : "Starling.hx", lineNumber : 754, className : "starling.core.Starling", methodName : "onContextCreated"});
+			haxe.Log.trace("[Starling] Enable 'Starling.handleLostContext' to avoid this error.",{ fileName : "Starling.hx", lineNumber : 760, className : "starling.core.Starling", methodName : "onContextCreated"});
 		} else this.initialize();
 	}
 	,onEnterFrame: function(event) {
@@ -66139,7 +66644,7 @@ starling.core.Starling.prototype = $extend(starling.events.EventDispatcher.proto
 			if(event.type == openfl.events.MouseEvent.MOUSE_DOWN) this.mLeftMouseDown = true; else if(event.type == openfl.events.MouseEvent.MOUSE_UP) this.mLeftMouseDown = false;
 		} else {
 			var touchEvent = event;
-			haxe.Log.trace("FIX",{ fileName : "Starling.hx", lineNumber : 849, className : "starling.core.Starling", methodName : "onTouch"});
+			haxe.Log.trace("FIX",{ fileName : "Starling.hx", lineNumber : 855, className : "starling.core.Starling", methodName : "onTouch"});
 			if(touchEvent.isPrimaryTouchPoint) return; else {
 				globalX = touchEvent.stageX;
 				globalY = touchEvent.stageY;
@@ -66755,6 +67260,245 @@ starling.display.Image.prototype = $extend(starling.display.Quad.prototype,{
 	}
 	,__class__: starling.display.Image
 	,__properties__: $extend(starling.display.Quad.prototype.__properties__,{set_smoothing:"set_smoothing",get_smoothing:"get_smoothing",set_texture:"set_texture",get_texture:"get_texture"})
+});
+starling.display.MovieClip = function(textures,fps) {
+	if(fps == null) fps = 12;
+	this.mSoundTransform = null;
+	if(textures.length > 0) {
+		starling.display.Image.call(this,textures.data[0]);
+		this.init((function($this) {
+			var $r;
+			var value = new Array();
+			{
+				var _g1 = 0;
+				var _g = textures.data.length;
+				while(_g1 < _g) {
+					var i = _g1++;
+					value.push(textures.data[i]);
+				}
+			}
+			$r = value;
+			return $r;
+		}(this)),fps);
+	} else throw new openfl.errors.ArgumentError("Empty texture array");
+};
+$hxClasses["starling.display.MovieClip"] = starling.display.MovieClip;
+starling.display.MovieClip.__name__ = ["starling","display","MovieClip"];
+starling.display.MovieClip.__interfaces__ = [starling.animation.IAnimatable];
+starling.display.MovieClip.__super__ = starling.display.Image;
+starling.display.MovieClip.prototype = $extend(starling.display.Image.prototype,{
+	mTextures: null
+	,mSounds: null
+	,mDurations: null
+	,mStartTimes: null
+	,mDefaultFrameDuration: null
+	,mCurrentTime: null
+	,mCurrentFrame: null
+	,mLoop: null
+	,mPlaying: null
+	,mMuted: null
+	,mSoundTransform: null
+	,totalTime: null
+	,currentTime: null
+	,numFrames: null
+	,isPlaying: null
+	,isComplete: null
+	,init: function(textures,fps) {
+		if(fps <= 0) throw new openfl.errors.ArgumentError("Invalid fps: " + fps);
+		var numFrames = textures.length;
+		this.mDefaultFrameDuration = 1.0 / fps;
+		this.mLoop = true;
+		this.mPlaying = true;
+		this.mCurrentTime = 0.0;
+		this.mCurrentFrame = 0;
+		this.mTextures = textures.concat(new Array());
+		haxe.Log.trace("CHECK INIT LENGTH IS NOT NEEDED",{ fileName : "MovieClip.hx", lineNumber : 99, className : "starling.display.MovieClip", methodName : "init"});
+		this.mSounds = new Array();
+		this.mDurations = new Array();
+		this.mStartTimes = new Array();
+		var _g = 0;
+		while(_g < numFrames) {
+			var i = _g++;
+			this.mDurations[i] = this.mDefaultFrameDuration;
+			this.mStartTimes[i] = i * this.mDefaultFrameDuration;
+		}
+	}
+	,addFrame: function(texture,sound,duration) {
+		if(duration == null) duration = -1;
+		this.addFrameAt(this.get_numFrames(),texture,sound,duration);
+	}
+	,addFrameAt: function(frameID,texture,sound,duration) {
+		if(duration == null) duration = -1;
+		if(frameID < 0 || frameID > this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		if(duration < 0) duration = this.mDefaultFrameDuration;
+		this.mTextures.splice(frameID,0,texture);
+		this.mSounds.splice(frameID,0,sound);
+		this.mDurations.splice(frameID,0,duration);
+		if(frameID > 0 && frameID == this.get_numFrames()) this.mStartTimes[frameID] = this.mStartTimes[frameID - 1 | 0] + this.mDurations[frameID - 1 | 0]; else this.updateStartTimes();
+	}
+	,removeFrameAt: function(frameID) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		if(this.get_numFrames() == 1) throw new openfl.errors.IllegalOperationError("Movie clip must not be empty");
+		this.mTextures.splice(frameID,1);
+		this.mSounds.splice(frameID,1);
+		this.mDurations.splice(frameID,1);
+		this.updateStartTimes();
+	}
+	,getFrameTexture: function(frameID) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		return this.mTextures[frameID];
+	}
+	,setFrameTexture: function(frameID,texture) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		this.mTextures[frameID] = texture;
+	}
+	,getFrameSound: function(frameID) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		return this.mSounds[frameID];
+	}
+	,setFrameSound: function(frameID,sound) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		this.mSounds[frameID] = sound;
+	}
+	,getFrameDuration: function(frameID) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		return this.mDurations[frameID];
+	}
+	,setFrameDuration: function(frameID,duration) {
+		if(frameID < 0 || frameID >= this.get_numFrames()) throw new openfl.errors.ArgumentError("Invalid frame id");
+		this.mDurations[frameID] = duration;
+		this.updateStartTimes();
+	}
+	,play: function() {
+		this.mPlaying = true;
+	}
+	,pause: function() {
+		this.mPlaying = false;
+	}
+	,stop: function() {
+		this.mPlaying = false;
+		this.set_currentFrame(0);
+	}
+	,updateStartTimes: function() {
+		var numFrames = this.get_numFrames();
+		this.mStartTimes = [];
+		this.mStartTimes[0] = 0;
+		var _g = 1;
+		while(_g < numFrames) {
+			var i = _g++;
+			this.mStartTimes[i] = this.mStartTimes[i - 1 | 0] + this.mDurations[i - 1 | 0];
+		}
+	}
+	,advanceTime: function(passedTime) {
+		if(!this.mPlaying || passedTime <= 0.0) return;
+		var finalFrame;
+		var previousFrame = this.mCurrentFrame;
+		var restTime = 0.0;
+		var breakAfterFrame = false;
+		var dispatchCompleteEvent = false;
+		var totalTime = this.get_totalTime();
+		if(this.mLoop && this.mCurrentTime >= totalTime) {
+			this.mCurrentTime = 0.0;
+			this.mCurrentFrame = 0;
+		}
+		if(this.mCurrentTime < totalTime) {
+			this.mCurrentTime += passedTime;
+			finalFrame = this.mTextures.length - 1;
+			while(this.mCurrentTime > this.mStartTimes[this.mCurrentFrame] + this.mDurations[this.mCurrentFrame]) {
+				if(this.mCurrentFrame == finalFrame) {
+					if(this.mLoop && !this.hasEventListener(starling.events.Event.COMPLETE)) {
+						this.mCurrentTime -= totalTime;
+						this.mCurrentFrame = 0;
+					} else {
+						breakAfterFrame = true;
+						restTime = this.mCurrentTime - totalTime;
+						dispatchCompleteEvent = true;
+						this.mCurrentFrame = finalFrame;
+						this.mCurrentTime = totalTime;
+					}
+				} else this.mCurrentFrame++;
+				var sound = this.mSounds[this.mCurrentFrame];
+				if(sound != null && !this.mMuted) sound.play(0,0,this.mSoundTransform);
+				if(breakAfterFrame) break;
+			}
+			if(this.mCurrentFrame == finalFrame && this.mCurrentTime == totalTime) dispatchCompleteEvent = true;
+		}
+		if(this.mCurrentFrame != previousFrame) this.set_texture(this.mTextures[this.mCurrentFrame]);
+		if(dispatchCompleteEvent) this.dispatchEventWith(starling.events.Event.COMPLETE);
+		if(this.mLoop && restTime > 0.0) this.advanceTime(restTime);
+	}
+	,get_totalTime: function() {
+		var numFrames = this.mTextures.length;
+		return this.mStartTimes[numFrames - 1 | 0] + this.mDurations[numFrames - 1 | 0];
+	}
+	,get_currentTime: function() {
+		return this.mCurrentTime;
+	}
+	,get_numFrames: function() {
+		return this.mTextures.length;
+	}
+	,get_loop: function() {
+		return this.mLoop;
+	}
+	,set_loop: function(value) {
+		this.mLoop = value;
+		return value;
+	}
+	,get_muted: function() {
+		return this.mMuted;
+	}
+	,set_muted: function(value) {
+		this.mMuted = value;
+		return value;
+	}
+	,get_soundTransform: function() {
+		return this.mSoundTransform;
+	}
+	,set_soundTransform: function(value) {
+		this.mSoundTransform = value;
+		return value;
+	}
+	,get_currentFrame: function() {
+		return this.mCurrentFrame;
+	}
+	,set_currentFrame: function(value) {
+		this.mCurrentFrame = value;
+		this.mCurrentTime = 0.0;
+		var _g = 0;
+		while(_g < value) {
+			var i = _g++;
+			this.mCurrentTime += this.getFrameDuration(i);
+		}
+		this.set_texture(this.mTextures[this.mCurrentFrame]);
+		if(!this.mMuted && this.mSounds[this.mCurrentFrame] != null) this.mSounds[this.mCurrentFrame].play();
+		return value;
+	}
+	,get_fps: function() {
+		return 1.0 / this.mDefaultFrameDuration;
+	}
+	,set_fps: function(value) {
+		if(value <= 0) throw new openfl.errors.ArgumentError("Invalid fps: " + value);
+		var newFrameDuration = 1.0 / value;
+		var acceleration = newFrameDuration / this.mDefaultFrameDuration;
+		this.mCurrentTime *= acceleration;
+		this.mDefaultFrameDuration = newFrameDuration;
+		var _g1 = 0;
+		var _g = this.get_numFrames();
+		while(_g1 < _g) {
+			var i = _g1++;
+			this.mDurations[i] *= acceleration;
+		}
+		this.updateStartTimes();
+		return value;
+	}
+	,get_isPlaying: function() {
+		if(this.mPlaying) return this.mLoop || this.mCurrentTime < this.get_totalTime(); else return false;
+	}
+	,get_isComplete: function() {
+		return !this.mLoop && this.mCurrentTime >= this.get_totalTime();
+	}
+	,__class__: starling.display.MovieClip
+	,__properties__: $extend(starling.display.Image.prototype.__properties__,{get_isComplete:"get_isComplete",get_isPlaying:"get_isPlaying",set_fps:"set_fps",get_fps:"get_fps",set_currentFrame:"set_currentFrame",get_currentFrame:"get_currentFrame",set_soundTransform:"set_soundTransform",get_soundTransform:"get_soundTransform",set_muted:"set_muted",get_muted:"get_muted",set_loop:"set_loop",get_loop:"get_loop",get_numFrames:"get_numFrames",get_currentTime:"get_currentTime",get_totalTime:"get_totalTime"})
 });
 starling.display.QuadBatch = function() {
 	starling.display.DisplayObject.call(this);
@@ -69137,1305 +69881,6 @@ starling.events.TouchProcessor.prototype = {
 	,__class__: starling.events.TouchProcessor
 	,__properties__: {get_numCurrentTouches:"get_numCurrentTouches",get_stage:"get_stage",set_root:"set_root",get_root:"get_root",set_multitapDistance:"set_multitapDistance",get_multitapDistance:"get_multitapDistance",set_multitapTime:"set_multitapTime",get_multitapTime:"get_multitapTime",set_simulateMultitouch:"set_simulateMultitouch",get_simulateMultitouch:"get_simulateMultitouch"}
 };
-starling.extensions = {};
-starling.extensions.ColorArgb = function(red,green,blue,alpha) {
-	if(alpha == null) alpha = 0;
-	if(blue == null) blue = 0;
-	if(green == null) green = 0;
-	if(red == null) red = 0;
-	this.red = red;
-	this.green = green;
-	this.blue = blue;
-	this.alpha = alpha;
-};
-$hxClasses["starling.extensions.ColorArgb"] = starling.extensions.ColorArgb;
-starling.extensions.ColorArgb.__name__ = ["starling","extensions","ColorArgb"];
-starling.extensions.ColorArgb.FromRgb = function(color) {
-	var rgb = new starling.extensions.ColorArgb();
-	rgb.fromRgb(color);
-	return rgb;
-};
-starling.extensions.ColorArgb.FromArgb = function(color) {
-	var argb = new starling.extensions.ColorArgb();
-	argb.fromArgb(color);
-	return argb;
-};
-starling.extensions.ColorArgb.prototype = {
-	red: null
-	,green: null
-	,blue: null
-	,alpha: null
-	,toRgb: function() {
-		var r = this.red;
-		if(r < 0.0) r = 0.0; else if(r > 1.0) r = 1.0;
-		var g = this.green;
-		if(g < 0.0) g = 0.0; else if(g > 1.0) g = 1.0;
-		var b = this.blue;
-		if(b < 0.0) b = 0.0; else if(b > 1.0) b = 1.0;
-		return js.Boot.__cast(r * 255 , Int) << 16 | js.Boot.__cast(g * 255 , Int) << 8 | js.Boot.__cast(b * 255 , Int);
-	}
-	,toArgb: function() {
-		var a = this.alpha;
-		if(a < 0.0) a = 0.0; else if(a > 1.0) a = 1.0;
-		var r = this.red;
-		if(r < 0.0) r = 0.0; else if(r > 1.0) r = 1.0;
-		var g = this.green;
-		if(g < 0.0) g = 0.0; else if(g > 1.0) g = 1.0;
-		var b = this.blue;
-		if(b < 0.0) b = 0.0; else if(b > 1.0) b = 1.0;
-		return js.Boot.__cast(a * 255 , Int) << 24 | js.Boot.__cast(r * 255 , Int) << 16 | js.Boot.__cast(g * 255 , Int) << 8 | js.Boot.__cast(b * 255 , Int);
-	}
-	,fromRgb: function(color) {
-		this.red = (function($this) {
-			var $r;
-			var $int = color >> 16 & 255;
-			$r = $int < 0?4294967296.0 + $int:$int + 0.0;
-			return $r;
-		}(this)) / 255.0;
-		this.green = (function($this) {
-			var $r;
-			var int1 = color >> 8 & 255;
-			$r = int1 < 0?4294967296.0 + int1:int1 + 0.0;
-			return $r;
-		}(this)) / 255.0;
-		this.blue = (function($this) {
-			var $r;
-			var int2 = color & 255;
-			$r = int2 < 0?4294967296.0 + int2:int2 + 0.0;
-			return $r;
-		}(this)) / 255.0;
-	}
-	,fromArgb: function(color) {
-		this.red = (function($this) {
-			var $r;
-			var $int = color >> 16 & 255;
-			$r = $int < 0?4294967296.0 + $int:$int + 0.0;
-			return $r;
-		}(this)) / 255.0;
-		this.green = (function($this) {
-			var $r;
-			var int1 = color >> 8 & 255;
-			$r = int1 < 0?4294967296.0 + int1:int1 + 0.0;
-			return $r;
-		}(this)) / 255.0;
-		this.blue = (function($this) {
-			var $r;
-			var int2 = color & 255;
-			$r = int2 < 0?4294967296.0 + int2:int2 + 0.0;
-			return $r;
-		}(this)) / 255.0;
-		this.alpha = (function($this) {
-			var $r;
-			var int3 = color >> 24 & 255;
-			$r = int3 < 0?4294967296.0 + int3:int3 + 0.0;
-			return $r;
-		}(this)) / 255.0;
-	}
-	,copyFrom: function(argb) {
-		this.red = argb.red;
-		this.green = argb.green;
-		this.blue = argb.blue;
-		this.alpha = argb.alpha;
-	}
-	,__class__: starling.extensions.ColorArgb
-};
-starling.extensions.Particle = function() {
-	this.x = this.y = this.rotation = this.currentTime = 0.0;
-	this.totalTime = this.alpha = this.scale = 1.0;
-	this.color = 16777215;
-};
-$hxClasses["starling.extensions.Particle"] = starling.extensions.Particle;
-starling.extensions.Particle.__name__ = ["starling","extensions","Particle"];
-starling.extensions.Particle.prototype = {
-	x: null
-	,y: null
-	,scale: null
-	,rotation: null
-	,color: null
-	,alpha: null
-	,currentTime: null
-	,totalTime: null
-	,__class__: starling.extensions.Particle
-};
-starling.extensions.PDParticle = function() {
-	this.colorArgb = new starling.extensions.ColorArgb();
-	this.colorArgbDelta = new starling.extensions.ColorArgb();
-	starling.extensions.Particle.call(this);
-};
-$hxClasses["starling.extensions.PDParticle"] = starling.extensions.PDParticle;
-starling.extensions.PDParticle.__name__ = ["starling","extensions","PDParticle"];
-starling.extensions.PDParticle.__super__ = starling.extensions.Particle;
-starling.extensions.PDParticle.prototype = $extend(starling.extensions.Particle.prototype,{
-	colorArgb: null
-	,colorArgbDelta: null
-	,startX: null
-	,startY: null
-	,velocityX: null
-	,velocityY: null
-	,radialAcceleration: null
-	,tangentialAcceleration: null
-	,emitRadius: null
-	,emitRadiusDelta: null
-	,emitRotation: null
-	,emitRotationDelta: null
-	,rotationDelta: null
-	,scaleDelta: null
-	,__class__: starling.extensions.PDParticle
-});
-starling.extensions.ParticleSystem = function(texture,emissionRate,initialCapacity,maxCapacity,blendFactorSource,blendFactorDest) {
-	if(maxCapacity == null) maxCapacity = 16383;
-	if(initialCapacity == null) initialCapacity = 128;
-	starling.display.DisplayObject.call(this);
-	if(texture == null) throw new openfl.errors.ArgumentError("texture must not be null");
-	this.mTexture = texture;
-	var this1;
-	this1 = new openfl.VectorData();
-	var this2;
-	this2 = new Array(0);
-	this1.data = this2;
-	this1.length = 0;
-	this1.fixed = false;
-	this.mParticles = this1;
-	this.mVertexData = new starling.utils.VertexData(0);
-	var value = [];
-	var vectorData = new openfl.VectorData();
-	vectorData.length = value.length;
-	vectorData.fixed = true;
-	var vec;
-	var this3;
-	this3 = new Array(value.length);
-	vec = this3;
-	var _g1 = 0;
-	var _g = value.length;
-	while(_g1 < _g) {
-		var i = _g1++;
-		vec[i] = value[i];
-	}
-	vectorData.data = vec;
-	this.mIndices = vectorData;
-	this.mEmissionRate = emissionRate;
-	this.mEmissionTime = 0.0;
-	this.mFrameTime = 0.0;
-	this.mEmitterX = this.mEmitterY = 0;
-	this.mMaxCapacity = Math.min(starling.extensions.ParticleSystem.MAX_NUM_PARTICLES,maxCapacity);
-	this.mSmoothing = starling.textures.TextureSmoothing.BILINEAR;
-	if(blendFactorSource != null) this.mBlendFactorSource = blendFactorSource; else this.mBlendFactorSource = 1;
-	if(blendFactorDest != null) this.mBlendFactorSource = blendFactorDest; else this.mBlendFactorDestination = 771;
-	this.createProgram();
-	this.updatePremultipliedAlpha();
-	this.raiseCapacity(initialCapacity);
-	starling.core.Starling.get_current().get_stage3D().addEventListener(starling.events.Event.CONTEXT3D_CREATE,$bind(this,this.onContextCreated),false,0,true);
-};
-$hxClasses["starling.extensions.ParticleSystem"] = starling.extensions.ParticleSystem;
-starling.extensions.ParticleSystem.__name__ = ["starling","extensions","ParticleSystem"];
-starling.extensions.ParticleSystem.__interfaces__ = [starling.animation.IAnimatable];
-starling.extensions.ParticleSystem.__properties__ = {set_sRenderAlpha:"set_sRenderAlpha",get_sRenderAlpha:"get_sRenderAlpha"}
-starling.extensions.ParticleSystem._sRenderAlpha = null;
-starling.extensions.ParticleSystem.get_sRenderAlpha = function() {
-	if(starling.extensions.ParticleSystem._sRenderAlpha == null) {
-		var this1 = starling.extensions.ParticleSystem._sRenderAlpha;
-		if(!this1.fixed) {
-			this1.length++;
-			if(this1.data.length < this1.length) {
-				var data;
-				var this2;
-				this2 = new Array(this1.data.length + 10);
-				data = this2;
-				haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data,0,this1.data.length);
-				this1.data = data;
-			}
-			this1.data[this1.length - 1] = 1.0;
-		}
-		this1.length;
-		var this3 = starling.extensions.ParticleSystem._sRenderAlpha;
-		if(!this3.fixed) {
-			this3.length++;
-			if(this3.data.length < this3.length) {
-				var data1;
-				var this4;
-				this4 = new Array(this3.data.length + 10);
-				data1 = this4;
-				haxe.ds._Vector.Vector_Impl_.blit(this3.data,0,data1,0,this3.data.length);
-				this3.data = data1;
-			}
-			this3.data[this3.length - 1] = 1.0;
-		}
-		this3.length;
-		var this5 = starling.extensions.ParticleSystem._sRenderAlpha;
-		if(!this5.fixed) {
-			this5.length++;
-			if(this5.data.length < this5.length) {
-				var data2;
-				var this6;
-				this6 = new Array(this5.data.length + 10);
-				data2 = this6;
-				haxe.ds._Vector.Vector_Impl_.blit(this5.data,0,data2,0,this5.data.length);
-				this5.data = data2;
-			}
-			this5.data[this5.length - 1] = 1.0;
-		}
-		this5.length;
-		var this7 = starling.extensions.ParticleSystem._sRenderAlpha;
-		if(!this7.fixed) {
-			this7.length++;
-			if(this7.data.length < this7.length) {
-				var data3;
-				var this8;
-				this8 = new Array(this7.data.length + 10);
-				data3 = this8;
-				haxe.ds._Vector.Vector_Impl_.blit(this7.data,0,data3,0,this7.data.length);
-				this7.data = data3;
-			}
-			this7.data[this7.length - 1] = 1.0;
-		}
-		this7.length;
-	}
-	return starling.extensions.ParticleSystem._sRenderAlpha;
-};
-starling.extensions.ParticleSystem.set_sRenderAlpha = function(value) {
-	return starling.extensions.ParticleSystem._sRenderAlpha = value;
-};
-starling.extensions.ParticleSystem.__super__ = starling.display.DisplayObject;
-starling.extensions.ParticleSystem.prototype = $extend(starling.display.DisplayObject.prototype,{
-	mTexture: null
-	,mParticles: null
-	,mFrameTime: null
-	,mProgram: null
-	,mVertexData: null
-	,mVertexBuffer: null
-	,mIndices: null
-	,mIndexBuffer: null
-	,mNumParticles: null
-	,mMaxCapacity: null
-	,mEmissionRate: null
-	,mEmissionTime: null
-	,mEmitterX: null
-	,mEmitterY: null
-	,mBlendFactorSource: null
-	,mBlendFactorDestination: null
-	,mSmoothing: null
-	,isEmitting: null
-	,capacity: null
-	,numParticles: null
-	,dispose: function() {
-		starling.core.Starling.get_current().get_stage3D().removeEventListener(starling.events.Event.CONTEXT3D_CREATE,$bind(this,this.onContextCreated));
-		if(this.mVertexBuffer != null) this.mVertexBuffer.dispose();
-		if(this.mIndexBuffer != null) this.mIndexBuffer.dispose();
-		starling.display.DisplayObject.prototype.dispose.call(this);
-	}
-	,onContextCreated: function(event) {
-		this.createProgram();
-		this.raiseCapacity(0);
-	}
-	,updatePremultipliedAlpha: function() {
-		var pma = this.mTexture.get_premultipliedAlpha();
-		if(this.mBlendFactorSource == 1 && this.mBlendFactorDestination == 771) {
-			this.mVertexData.set_premultipliedAlpha(this.mTexture.get_premultipliedAlpha());
-			if(!pma) this.mBlendFactorSource = 770;
-		} else this.mVertexData.set_premultipliedAlpha(false);
-	}
-	,createParticle: function() {
-		return new starling.extensions.Particle();
-	}
-	,initParticle: function(particle) {
-		particle.x = this.mEmitterX;
-		particle.y = this.mEmitterY;
-		particle.currentTime = 0;
-		particle.totalTime = 1;
-		particle.color = Math.random() * 16777215;
-	}
-	,advanceParticle: function(particle,passedTime) {
-		particle.y += passedTime * 250;
-		particle.alpha = 1.0 - particle.currentTime / particle.totalTime;
-		particle.scale = 1.0 - particle.alpha;
-		particle.currentTime += passedTime;
-	}
-	,raiseCapacity: function(byAmount) {
-		var oldCapacity = this.get_capacity();
-		var newCapacity = Math.min(this.mMaxCapacity,oldCapacity + byAmount);
-		var context = starling.core.Starling.get_Context();
-		if(context == null) throw new starling.errors.MissingContextError();
-		var baseVertexData = new starling.utils.VertexData(4);
-		baseVertexData.setTexCoords(0,0.0,0.0);
-		baseVertexData.setTexCoords(1,1.0,0.0);
-		baseVertexData.setTexCoords(2,0.0,1.0);
-		baseVertexData.setTexCoords(3,1.0,1.0);
-		this.mTexture.adjustVertexData(baseVertexData,0,4);
-		this.mParticles.fixed = false;
-		this.mIndices.fixed = false;
-		var _g = oldCapacity;
-		while(_g < newCapacity) {
-			var i = _g++;
-			var numVertices = i * 4;
-			var numIndices = i * 6;
-			var this1 = this.mParticles;
-			var value = this.createParticle();
-			if(!this1.fixed) {
-				if(i >= this1.length) this1.length = i + 1;
-				if(this1.data.length < this1.length) {
-					var data;
-					var this2;
-					this2 = new Array(this1.data.length + 10);
-					data = this2;
-					haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data,0,this1.data.length);
-					this1.data = data;
-				}
-			}
-			this1.data[i] = value;
-			this.mVertexData.append(baseVertexData);
-			var this3 = this.mIndices;
-			var key;
-			key = js.Boot.__cast(numIndices , Int);
-			if(!this3.fixed) {
-				if(key >= this3.length) this3.length = key + 1;
-				if(this3.data.length < this3.length) {
-					var data1;
-					var this4;
-					this4 = new Array(this3.data.length + 10);
-					data1 = this4;
-					haxe.ds._Vector.Vector_Impl_.blit(this3.data,0,data1,0,this3.data.length);
-					this3.data = data1;
-				}
-			}
-			this3.data[key] = numVertices;
-			var this5 = this.mIndices;
-			var key1;
-			key1 = js.Boot.__cast(numIndices + 1 , Int);
-			if(!this5.fixed) {
-				if(key1 >= this5.length) this5.length = key1 + 1;
-				if(this5.data.length < this5.length) {
-					var data2;
-					var this6;
-					this6 = new Array(this5.data.length + 10);
-					data2 = this6;
-					haxe.ds._Vector.Vector_Impl_.blit(this5.data,0,data2,0,this5.data.length);
-					this5.data = data2;
-				}
-			}
-			this5.data[key1] = numVertices + 1;
-			var this7 = this.mIndices;
-			var key2;
-			key2 = js.Boot.__cast(numIndices + 2 , Int);
-			if(!this7.fixed) {
-				if(key2 >= this7.length) this7.length = key2 + 1;
-				if(this7.data.length < this7.length) {
-					var data3;
-					var this8;
-					this8 = new Array(this7.data.length + 10);
-					data3 = this8;
-					haxe.ds._Vector.Vector_Impl_.blit(this7.data,0,data3,0,this7.data.length);
-					this7.data = data3;
-				}
-			}
-			this7.data[key2] = numVertices + 2;
-			var this9 = this.mIndices;
-			var key3;
-			key3 = js.Boot.__cast(numIndices + 3 , Int);
-			if(!this9.fixed) {
-				if(key3 >= this9.length) this9.length = key3 + 1;
-				if(this9.data.length < this9.length) {
-					var data4;
-					var this10;
-					this10 = new Array(this9.data.length + 10);
-					data4 = this10;
-					haxe.ds._Vector.Vector_Impl_.blit(this9.data,0,data4,0,this9.data.length);
-					this9.data = data4;
-				}
-			}
-			this9.data[key3] = numVertices + 1;
-			var this11 = this.mIndices;
-			var key4;
-			key4 = js.Boot.__cast(numIndices + 4 , Int);
-			if(!this11.fixed) {
-				if(key4 >= this11.length) this11.length = key4 + 1;
-				if(this11.data.length < this11.length) {
-					var data5;
-					var this12;
-					this12 = new Array(this11.data.length + 10);
-					data5 = this12;
-					haxe.ds._Vector.Vector_Impl_.blit(this11.data,0,data5,0,this11.data.length);
-					this11.data = data5;
-				}
-			}
-			this11.data[key4] = numVertices + 3;
-			var this13 = this.mIndices;
-			var key5;
-			key5 = js.Boot.__cast(numIndices + 5 , Int);
-			if(!this13.fixed) {
-				if(key5 >= this13.length) this13.length = key5 + 1;
-				if(this13.data.length < this13.length) {
-					var data6;
-					var this14;
-					this14 = new Array(this13.data.length + 10);
-					data6 = this14;
-					haxe.ds._Vector.Vector_Impl_.blit(this13.data,0,data6,0,this13.data.length);
-					this13.data = data6;
-				}
-			}
-			this13.data[key5] = numVertices + 2;
-		}
-		if(newCapacity < oldCapacity) {
-			var this15 = this.mParticles;
-			if(!this15.fixed) {
-				if(newCapacity > this15.length) {
-					var data7;
-					var this16;
-					this16 = new Array(newCapacity);
-					data7 = this16;
-					haxe.ds._Vector.Vector_Impl_.blit(this15.data,0,data7,0,Std["int"](Math.min(this15.data.length,newCapacity)));
-					this15.data = data7;
-				}
-				this15.length = newCapacity;
-			}
-			newCapacity;
-			var this17 = this.mIndices;
-			var value1 = newCapacity * 6;
-			if(!this17.fixed) {
-				if(value1 > this17.length) {
-					var data8;
-					var this18;
-					this18 = new Array(value1);
-					data8 = this18;
-					haxe.ds._Vector.Vector_Impl_.blit(this17.data,0,data8,0,Std["int"](Math.min(this17.data.length,value1)));
-					this17.data = data8;
-				}
-				this17.length = value1;
-			}
-			value1;
-		}
-		this.mParticles.fixed = true;
-		this.mIndices.fixed = true;
-		if(this.mVertexBuffer != null) this.mVertexBuffer.dispose();
-		if(this.mIndexBuffer != null) this.mIndexBuffer.dispose();
-		if(newCapacity > 0) {
-			this.mVertexBuffer = context.createVertexBuffer(newCapacity * 4,starling.utils.VertexData.ELEMENTS_PER_VERTEX);
-			this.mVertexBuffer.uploadFromVector(this.mVertexData.get_rawData(),0,newCapacity * 4);
-			this.mIndexBuffer = context.createIndexBuffer(newCapacity * 6);
-			this.mIndexBuffer.uploadFromVector(this.mIndices,0,newCapacity * 6);
-		}
-	}
-	,start: function(duration) {
-		if(duration == null) duration = -1;
-		if(duration == -1) duration = 2147483647;
-		if(this.mEmissionRate != 0) this.mEmissionTime = duration;
-	}
-	,stop: function(clearParticles) {
-		if(clearParticles == null) clearParticles = false;
-		this.mEmissionTime = 0.0;
-		if(clearParticles) this.clear();
-	}
-	,clear: function() {
-		this.mNumParticles = 0;
-	}
-	,getBounds: function(targetSpace,resultRect) {
-		if(resultRect == null) resultRect = new openfl.geom.Rectangle();
-		this.getTransformationMatrix(targetSpace,starling.extensions.ParticleSystem.sHelperMatrix);
-		starling.utils.MatrixUtil.transformCoords(starling.extensions.ParticleSystem.sHelperMatrix,0,0,starling.extensions.ParticleSystem.sHelperPoint);
-		resultRect.x = starling.extensions.ParticleSystem.sHelperPoint.x;
-		resultRect.y = starling.extensions.ParticleSystem.sHelperPoint.y;
-		resultRect.width = resultRect.height = 0;
-		return resultRect;
-	}
-	,advanceTime: function(passedTime) {
-		var particleIndex = 0;
-		var particle;
-		while(particleIndex < this.mNumParticles) {
-			particle = js.Boot.__cast(this.mParticles.data[particleIndex] , starling.extensions.Particle);
-			if(particle.currentTime < particle.totalTime) {
-				this.advanceParticle(particle,passedTime);
-				++particleIndex;
-			} else {
-				if(particleIndex != this.mNumParticles - 1) {
-					var nextParticle;
-					var index;
-					index = js.Boot.__cast(this.mNumParticles - 1 , Int);
-					nextParticle = this.mParticles.data[index];
-					var this1 = this.mParticles;
-					var key = this.mNumParticles - 1;
-					if(!this1.fixed) {
-						if(key >= this1.length) this1.length = key + 1;
-						if(this1.data.length < this1.length) {
-							var data;
-							var this2;
-							this2 = new Array(this1.data.length + 10);
-							data = this2;
-							haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data,0,this1.data.length);
-							this1.data = data;
-						}
-					}
-					this1.data[key] = particle;
-					var this3 = this.mParticles;
-					if(!this3.fixed) {
-						if(particleIndex >= this3.length) this3.length = particleIndex + 1;
-						if(this3.data.length < this3.length) {
-							var data1;
-							var this4;
-							this4 = new Array(this3.data.length + 10);
-							data1 = this4;
-							haxe.ds._Vector.Vector_Impl_.blit(this3.data,0,data1,0,this3.data.length);
-							this3.data = data1;
-						}
-					}
-					this3.data[particleIndex] = nextParticle;
-				}
-				--this.mNumParticles;
-				if(this.mNumParticles == 0 && this.mEmissionTime == 0) this.dispatchEventWith(starling.events.Event.COMPLETE);
-			}
-		}
-		if(this.mEmissionTime > 0) {
-			var timeBetweenParticles = 1.0 / this.mEmissionRate;
-			this.mFrameTime += passedTime;
-			while(this.mFrameTime > 0) {
-				if(this.mNumParticles < this.mMaxCapacity) {
-					if(this.mNumParticles == this.get_capacity()) this.raiseCapacity(this.get_capacity());
-					particle = this.mParticles.data[this.mNumParticles];
-					this.initParticle(particle);
-					if(particle.totalTime > 0.0) {
-						this.advanceParticle(particle,this.mFrameTime);
-						++this.mNumParticles;
-					}
-				}
-				this.mFrameTime -= timeBetweenParticles;
-			}
-			if(this.mEmissionTime != 2147483647) this.mEmissionTime = Math.max(0.0,this.mEmissionTime - passedTime);
-			if(this.mNumParticles == 0 && this.mEmissionTime == 0) this.dispatchEventWith(starling.events.Event.COMPLETE);
-		}
-		var vertexID = 0;
-		var color;
-		var alpha;
-		var rotation;
-		var x;
-		var y;
-		var xOffset;
-		var yOffset;
-		var textureWidth = this.mTexture.get_width();
-		var textureHeight = this.mTexture.get_height();
-		var _g1 = 0;
-		var _g = this.mNumParticles;
-		while(_g1 < _g) {
-			var i = _g1++;
-			vertexID = i << 2;
-			particle = this.mParticles.data[i];
-			color = particle.color;
-			alpha = particle.alpha;
-			rotation = particle.rotation;
-			x = particle.x;
-			y = particle.y;
-			xOffset = textureWidth * particle.scale >> 1;
-			yOffset = textureHeight * particle.scale >> 1;
-			var _g2 = 0;
-			while(_g2 < 4) {
-				var j = _g2++;
-				this.mVertexData.setColorAndAlpha(vertexID + j,color,alpha);
-			}
-			if(Math.isNaN(rotation) == false) {
-				var cos = Math.cos(rotation);
-				var sin = Math.sin(rotation);
-				var cosX = cos * xOffset;
-				var cosY = cos * yOffset;
-				var sinX = sin * xOffset;
-				var sinY = sin * yOffset;
-				this.mVertexData.setPosition(vertexID,x - cosX + sinY,y - sinX - cosY);
-				this.mVertexData.setPosition(vertexID + 1,x + cosX + sinY,y + sinX - cosY);
-				this.mVertexData.setPosition(vertexID + 2,x - cosX - sinY,y - sinX + cosY);
-				this.mVertexData.setPosition(vertexID + 3,x + cosX - sinY,y + sinX + cosY);
-			} else {
-				this.mVertexData.setPosition(vertexID,x - xOffset,y - yOffset);
-				this.mVertexData.setPosition(vertexID + 1,x + xOffset,y - yOffset);
-				this.mVertexData.setPosition(vertexID + 2,x - xOffset,y + yOffset);
-				this.mVertexData.setPosition(vertexID + 3,x + xOffset,y + yOffset);
-			}
-		}
-	}
-	,render: function(support,alpha) {
-		if(this.mNumParticles == 0) return;
-		support.finishQuadBatch();
-		if(Object.prototype.hasOwnProperty.call(support,"raiseDrawCount")) {
-			var raiseDrawCount = Reflect.getProperty(support,"raiseDrawCount");
-			raiseDrawCount.apply(support,null);
-		}
-		alpha *= this.get_alpha();
-		var context = starling.core.Starling.get_Context();
-		var pma = this.get_texture().get_premultipliedAlpha();
-		var this1 = starling.extensions.ParticleSystem.get_sRenderAlpha();
-		var value;
-		var this2 = starling.extensions.ParticleSystem.get_sRenderAlpha();
-		var value1;
-		var this3 = starling.extensions.ParticleSystem.get_sRenderAlpha();
-		if(!this3.fixed) {
-			if(2 >= this3.length) this3.length = 3;
-			if(this3.data.length < this3.length) {
-				var data;
-				var this4;
-				this4 = new Array(this3.data.length + 10);
-				data = this4;
-				haxe.ds._Vector.Vector_Impl_.blit(this3.data,0,data,0,this3.data.length);
-				this3.data = data;
-			}
-		}
-		if(pma) value1 = this3.data[2] = alpha; else value1 = this3.data[2] = 1.0;
-		if(!this2.fixed) {
-			if(1 >= this2.length) this2.length = 2;
-			if(this2.data.length < this2.length) {
-				var data1;
-				var this5;
-				this5 = new Array(this2.data.length + 10);
-				data1 = this5;
-				haxe.ds._Vector.Vector_Impl_.blit(this2.data,0,data1,0,this2.data.length);
-				this2.data = data1;
-			}
-		}
-		value = this2.data[1] = value1;
-		if(!this1.fixed) {
-			if(0 >= this1.length) this1.length = 1;
-			if(this1.data.length < this1.length) {
-				var data2;
-				var this6;
-				this6 = new Array(this1.data.length + 10);
-				data2 = this6;
-				haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data2,0,this1.data.length);
-				this1.data = data2;
-			}
-		}
-		this1.data[0] = value;
-		var this7 = starling.extensions.ParticleSystem.get_sRenderAlpha();
-		if(!this7.fixed) {
-			if(3 >= this7.length) this7.length = 4;
-			if(this7.data.length < this7.length) {
-				var data3;
-				var this8;
-				this8 = new Array(this7.data.length + 10);
-				data3 = this8;
-				haxe.ds._Vector.Vector_Impl_.blit(this7.data,0,data3,0,this7.data.length);
-				this7.data = data3;
-			}
-		}
-		this7.data[3] = alpha;
-		if(context == null) throw new starling.errors.MissingContextError();
-		this.mVertexBuffer.uploadFromVector(this.mVertexData.get_rawData(),0,this.mNumParticles * 4);
-		this.mIndexBuffer.uploadFromVector(this.mIndices,0,this.mNumParticles * 6);
-		context.setBlendFactors(this.mBlendFactorSource,this.mBlendFactorDestination);
-		context.setTextureAt(0,this.mTexture.get_base());
-		context.setProgram(this.mProgram);
-		context.setProgramConstantsFromMatrix(openfl.display3D.Context3DProgramType.VERTEX,0,support.get_mvpMatrix3D(),true);
-		context.setProgramConstantsFromVector(openfl.display3D.Context3DProgramType.VERTEX,4,(function($this) {
-			var $r;
-			var this9 = starling.extensions.ParticleSystem.get_sRenderAlpha();
-			var value2 = new Array();
-			{
-				var _g1 = 0;
-				var _g = this9.data.length;
-				while(_g1 < _g) {
-					var i = _g1++;
-					value2.push(this9.data[i]);
-				}
-			}
-			$r = value2;
-			return $r;
-		}(this)),1);
-		context.setVertexBufferAt(0,this.mVertexBuffer,starling.utils.VertexData.POSITION_OFFSET,openfl.display3D.Context3DVertexBufferFormat.FLOAT_2);
-		context.setVertexBufferAt(1,this.mVertexBuffer,starling.utils.VertexData.COLOR_OFFSET,openfl.display3D.Context3DVertexBufferFormat.FLOAT_4);
-		context.setVertexBufferAt(2,this.mVertexBuffer,starling.utils.VertexData.TEXCOORD_OFFSET,openfl.display3D.Context3DVertexBufferFormat.FLOAT_2);
-		context.drawTriangles(this.mIndexBuffer,0,this.mNumParticles * 2);
-		context.setTextureAt(0,null);
-		context.setVertexBufferAt(0,null);
-		context.setVertexBufferAt(1,null);
-		context.setVertexBufferAt(2,null);
-	}
-	,populate: function(count) {
-		count = Math.min(count,this.mMaxCapacity - this.mNumParticles);
-		if(this.mNumParticles + count > this.get_capacity()) this.raiseCapacity(this.mNumParticles + count - this.get_capacity());
-		var p;
-		var _g = 0;
-		while(_g < count) {
-			var i = _g++;
-			p = this.mParticles.data[this.mNumParticles + i];
-			this.initParticle(p);
-			this.advanceParticle(p,Math.random() * p.totalTime);
-		}
-		this.mNumParticles += count;
-	}
-	,createProgram: function() {
-		var mipmap = this.mTexture.get_mipMapping();
-		var textureFormat = this.mTexture.get_format();
-		var programName;
-		programName = "ext.ParticleSystem." + Std.string(textureFormat) + "/" + this.mSmoothing.charAt(0) + (mipmap?"+mm":"");
-		this.mProgram = starling.core.Starling.get_current().getProgram(programName);
-		if(this.mProgram == null) {
-			var textureOptions = starling.core.RenderSupport.getTextureLookupFlags(textureFormat,mipmap,false,this.mSmoothing);
-			var vertexProgramCode = "m44 op, va0, vc0 \n" + "mul v0, va1, vc4 \n" + "mov v1, va2      \n";
-			var fragmentProgramCode = "tex ft1, v1, fs0 " + textureOptions + "\n" + "mul oc, ft1, v0";
-			var vertexByteCode = openfl.display3D._shaders.AGLSLShaderUtils.createShader(openfl.display3D.Context3DProgramType.VERTEX,vertexProgramCode);
-			var fragmentByteCode = openfl.display3D._shaders.AGLSLShaderUtils.createShader(openfl.display3D.Context3DProgramType.FRAGMENT,fragmentProgramCode);
-			this.mProgram = starling.core.Starling.get_Context().createProgram();
-			this.mProgram.upload(vertexByteCode,fragmentByteCode);
-			haxe.Log.trace("FIX: " + Std.string(this.mProgram),{ fileName : "ParticleSystem.hx", lineNumber : 523, className : "starling.extensions.ParticleSystem", methodName : "createProgram"});
-		}
-	}
-	,get_isEmitting: function() {
-		return this.mEmissionTime > 0 && this.mEmissionRate > 0;
-	}
-	,get_capacity: function() {
-		return this.mVertexData.get_numVertices() / 4;
-	}
-	,get_numParticles: function() {
-		return this.mNumParticles;
-	}
-	,get_maxCapacity: function() {
-		return this.mMaxCapacity;
-	}
-	,set_maxCapacity: function(value) {
-		this.mMaxCapacity = Math.min(starling.extensions.ParticleSystem.MAX_NUM_PARTICLES,value);
-		return value;
-	}
-	,get_emissionRate: function() {
-		return this.mEmissionRate;
-	}
-	,set_emissionRate: function(value) {
-		return this.mEmissionRate = value;
-	}
-	,get_emitterX: function() {
-		return this.mEmitterX;
-	}
-	,set_emitterX: function(value) {
-		return this.mEmitterX = value;
-	}
-	,get_emitterY: function() {
-		return this.mEmitterY;
-	}
-	,set_emitterY: function(value) {
-		return this.mEmitterY = value;
-	}
-	,get_blendFactorSource: function() {
-		return this.mBlendFactorSource;
-	}
-	,set_blendFactorSource: function(value) {
-		this.mBlendFactorSource = value;
-		this.updatePremultipliedAlpha();
-		return value;
-	}
-	,get_blendFactorDestination: function() {
-		return this.mBlendFactorDestination;
-	}
-	,set_blendFactorDestination: function(value) {
-		this.mBlendFactorDestination = value;
-		this.updatePremultipliedAlpha();
-		return value;
-	}
-	,get_texture: function() {
-		return this.mTexture;
-	}
-	,set_texture: function(value) {
-		if(value == null) throw new openfl.errors.ArgumentError("Texture cannot be null");
-		this.mTexture = value;
-		this.createProgram();
-		this.updatePremultipliedAlpha();
-		var i = this.mVertexData.get_numVertices() - 4;
-		while(i >= 0) {
-			this.mVertexData.setTexCoords(i,0.0,0.0);
-			this.mVertexData.setTexCoords(i + 1,1.0,0.0);
-			this.mVertexData.setTexCoords(i + 2,0.0,1.0);
-			this.mVertexData.setTexCoords(i + 3,1.0,1.0);
-			this.mTexture.adjustVertexData(this.mVertexData,i,4);
-			i -= 4;
-		}
-		return value;
-	}
-	,get_smoothing: function() {
-		return this.mSmoothing;
-	}
-	,set_smoothing: function(value) {
-		return this.mSmoothing = value;
-	}
-	,__class__: starling.extensions.ParticleSystem
-	,__properties__: $extend(starling.display.DisplayObject.prototype.__properties__,{set_smoothing:"set_smoothing",get_smoothing:"get_smoothing",set_texture:"set_texture",get_texture:"get_texture",set_blendFactorDestination:"set_blendFactorDestination",get_blendFactorDestination:"get_blendFactorDestination",set_blendFactorSource:"set_blendFactorSource",get_blendFactorSource:"get_blendFactorSource",set_emitterY:"set_emitterY",get_emitterY:"get_emitterY",set_emitterX:"set_emitterX",get_emitterX:"get_emitterX",set_emissionRate:"set_emissionRate",get_emissionRate:"get_emissionRate",set_maxCapacity:"set_maxCapacity",get_maxCapacity:"get_maxCapacity",get_numParticles:"get_numParticles",get_capacity:"get_capacity",get_isEmitting:"get_isEmitting"})
-});
-starling.extensions.PDParticleSystem = function(config,texture) {
-	this.EMITTER_TYPE_RADIAL = 1;
-	this.EMITTER_TYPE_GRAVITY = 0;
-	this.parseConfig(config);
-	var emissionRate = this.mMaxNumParticles / this.mLifespan;
-	starling.extensions.ParticleSystem.call(this,texture,emissionRate,this.mMaxNumParticles,this.mMaxNumParticles,this.mBlendFactorSource,this.mBlendFactorDestination);
-};
-$hxClasses["starling.extensions.PDParticleSystem"] = starling.extensions.PDParticleSystem;
-starling.extensions.PDParticleSystem.__name__ = ["starling","extensions","PDParticleSystem"];
-starling.extensions.PDParticleSystem.__super__ = starling.extensions.ParticleSystem;
-starling.extensions.PDParticleSystem.prototype = $extend(starling.extensions.ParticleSystem.prototype,{
-	EMITTER_TYPE_GRAVITY: null
-	,EMITTER_TYPE_RADIAL: null
-	,mEmitterType: null
-	,mEmitterXVariance: null
-	,mEmitterYVariance: null
-	,mMaxNumParticles: null
-	,mLifespan: null
-	,mLifespanVariance: null
-	,mStartSize: null
-	,mStartSizeVariance: null
-	,mEndSize: null
-	,mEndSizeVariance: null
-	,mEmitAngle: null
-	,mEmitAngleVariance: null
-	,mStartRotation: null
-	,mStartRotationVariance: null
-	,mEndRotation: null
-	,mEndRotationVariance: null
-	,mSpeed: null
-	,mSpeedVariance: null
-	,mGravityX: null
-	,mGravityY: null
-	,mRadialAcceleration: null
-	,mRadialAccelerationVariance: null
-	,mTangentialAcceleration: null
-	,mTangentialAccelerationVariance: null
-	,mMaxRadius: null
-	,mMaxRadiusVariance: null
-	,mMinRadius: null
-	,mMinRadiusVariance: null
-	,mRotatePerSecond: null
-	,mRotatePerSecondVariance: null
-	,mStartColor: null
-	,mStartColorVariance: null
-	,mEndColor: null
-	,mEndColorVariance: null
-	,createParticle: function() {
-		return new starling.extensions.PDParticle();
-	}
-	,initParticle: function(aParticle) {
-		var particle = aParticle;
-		var lifespan = this.mLifespan + this.mLifespanVariance * (Math.random() * 2.0 - 1.0);
-		particle.currentTime = 0.0;
-		if(lifespan > 0.0) particle.totalTime = lifespan; else particle.totalTime = 0.0;
-		if(lifespan <= 0.0) return;
-		particle.x = this.mEmitterX + this.mEmitterXVariance * (Math.random() * 2.0 - 1.0);
-		particle.y = this.mEmitterY + this.mEmitterYVariance * (Math.random() * 2.0 - 1.0);
-		particle.startX = this.mEmitterX;
-		particle.startY = this.mEmitterY;
-		var angle = this.mEmitAngle + this.mEmitAngleVariance * (Math.random() * 2.0 - 1.0);
-		var speed = this.mSpeed + this.mSpeedVariance * (Math.random() * 2.0 - 1.0);
-		particle.velocityX = speed * Math.cos(angle);
-		particle.velocityY = speed * Math.sin(angle);
-		var startRadius = this.mMaxRadius + this.mMaxRadiusVariance * (Math.random() * 2.0 - 1.0);
-		var endRadius = this.mMinRadius + this.mMinRadiusVariance * (Math.random() * 2.0 - 1.0);
-		particle.emitRadius = startRadius;
-		particle.emitRadiusDelta = (endRadius - startRadius) / lifespan;
-		particle.emitRotation = this.mEmitAngle + this.mEmitAngleVariance * (Math.random() * 2.0 - 1.0);
-		particle.emitRotationDelta = this.mRotatePerSecond + this.mRotatePerSecondVariance * (Math.random() * 2.0 - 1.0);
-		particle.radialAcceleration = this.mRadialAcceleration + this.mRadialAccelerationVariance * (Math.random() * 2.0 - 1.0);
-		particle.tangentialAcceleration = this.mTangentialAcceleration + this.mTangentialAccelerationVariance * (Math.random() * 2.0 - 1.0);
-		var startSize = this.mStartSize + this.mStartSizeVariance * (Math.random() * 2.0 - 1.0);
-		var endSize = this.mEndSize + this.mEndSizeVariance * (Math.random() * 2.0 - 1.0);
-		if(startSize < 0.1) startSize = 0.1;
-		if(endSize < 0.1) endSize = 0.1;
-		particle.scale = startSize / this.get_texture().get_width();
-		particle.scaleDelta = (endSize - startSize) / lifespan / this.get_texture().get_width();
-		var startColor = particle.colorArgb;
-		var colorDelta = particle.colorArgbDelta;
-		startColor.red = this.mStartColor.red;
-		startColor.green = this.mStartColor.green;
-		startColor.blue = this.mStartColor.blue;
-		startColor.alpha = this.mStartColor.alpha;
-		if(this.mStartColorVariance.red != 0) startColor.red += this.mStartColorVariance.red * (Math.random() * 2.0 - 1.0);
-		if(this.mStartColorVariance.green != 0) startColor.green += this.mStartColorVariance.green * (Math.random() * 2.0 - 1.0);
-		if(this.mStartColorVariance.blue != 0) startColor.blue += this.mStartColorVariance.blue * (Math.random() * 2.0 - 1.0);
-		if(this.mStartColorVariance.alpha != 0) startColor.alpha += this.mStartColorVariance.alpha * (Math.random() * 2.0 - 1.0);
-		var endColorRed = this.mEndColor.red;
-		var endColorGreen = this.mEndColor.green;
-		var endColorBlue = this.mEndColor.blue;
-		var endColorAlpha = this.mEndColor.alpha;
-		if(this.mEndColorVariance.red != 0) endColorRed += this.mEndColorVariance.red * (Math.random() * 2.0 - 1.0);
-		if(this.mEndColorVariance.green != 0) endColorGreen += this.mEndColorVariance.green * (Math.random() * 2.0 - 1.0);
-		if(this.mEndColorVariance.blue != 0) endColorBlue += this.mEndColorVariance.blue * (Math.random() * 2.0 - 1.0);
-		if(this.mEndColorVariance.alpha != 0) endColorAlpha += this.mEndColorVariance.alpha * (Math.random() * 2.0 - 1.0);
-		colorDelta.red = (endColorRed - startColor.red) / lifespan;
-		colorDelta.green = (endColorGreen - startColor.green) / lifespan;
-		colorDelta.blue = (endColorBlue - startColor.blue) / lifespan;
-		colorDelta.alpha = (endColorAlpha - startColor.alpha) / lifespan;
-		var startRotation = this.mStartRotation + this.mStartRotationVariance * (Math.random() * 2.0 - 1.0);
-		var endRotation = this.mEndRotation + this.mEndRotationVariance * (Math.random() * 2.0 - 1.0);
-		particle.rotation = startRotation;
-		particle.rotationDelta = (endRotation - startRotation) / lifespan;
-	}
-	,advanceParticle: function(aParticle,passedTime) {
-		var particle = aParticle;
-		var restTime = particle.totalTime - particle.currentTime;
-		if(restTime > passedTime) passedTime = passedTime; else passedTime = restTime;
-		particle.currentTime += passedTime;
-		if(this.mEmitterType == this.EMITTER_TYPE_RADIAL) {
-			particle.emitRotation += particle.emitRotationDelta * passedTime;
-			particle.emitRadius += particle.emitRadiusDelta * passedTime;
-			particle.x = this.mEmitterX - Math.cos(particle.emitRotation) * particle.emitRadius;
-			particle.y = this.mEmitterY - Math.sin(particle.emitRotation) * particle.emitRadius;
-		} else {
-			var distanceX = particle.x - particle.startX;
-			var distanceY = particle.y - particle.startY;
-			var distanceScalar = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-			if(distanceScalar < 0.01) distanceScalar = 0.01;
-			var radialX = distanceX / distanceScalar;
-			var radialY = distanceY / distanceScalar;
-			var tangentialX = radialX;
-			var tangentialY = radialY;
-			radialX *= particle.radialAcceleration;
-			radialY *= particle.radialAcceleration;
-			var newY = tangentialX;
-			tangentialX = -tangentialY * particle.tangentialAcceleration;
-			tangentialY = newY * particle.tangentialAcceleration;
-			particle.velocityX += passedTime * (this.mGravityX + radialX + tangentialX);
-			particle.velocityY += passedTime * (this.mGravityY + radialY + tangentialY);
-			particle.x += particle.velocityX * passedTime;
-			particle.y += particle.velocityY * passedTime;
-		}
-		particle.scale += particle.scaleDelta * passedTime;
-		particle.rotation += particle.rotationDelta * passedTime;
-		particle.colorArgb.red += particle.colorArgbDelta.red * passedTime;
-		particle.colorArgb.green += particle.colorArgbDelta.green * passedTime;
-		particle.colorArgb.blue += particle.colorArgbDelta.blue * passedTime;
-		particle.colorArgb.alpha += particle.colorArgbDelta.alpha * passedTime;
-		particle.color = particle.colorArgb.toRgb();
-		particle.alpha = particle.colorArgb.alpha;
-	}
-	,updateEmissionRate: function() {
-		this.set_emissionRate(this.mMaxNumParticles / this.mLifespan);
-	}
-	,getXMLNode: function(xml,string) {
-		var $it0 = xml.elementsNamed(string);
-		while( $it0.hasNext() ) {
-			var sourcePositionVariance = $it0.next();
-			if(sourcePositionVariance.nodeType == Xml.Element) return sourcePositionVariance;
-		}
-		return null;
-	}
-	,parseConfig: function(root) {
-		var config = this.getXMLNode(root,"particleEmitterConfig");
-		var sourcePositionVariance = this.getXMLNode(config,"sourcePositionVariance");
-		this.mEmitterXVariance = Std.parseFloat(sourcePositionVariance.get("x"));
-		this.mEmitterYVariance = Std.parseFloat(sourcePositionVariance.get("y"));
-		var gravity = this.getXMLNode(config,"gravity");
-		this.mGravityX = Std.parseFloat(gravity.get("x"));
-		this.mGravityY = Std.parseFloat(gravity.get("y"));
-		this.mEmitterType = this.getIntValue(this.getXMLNode(config,"emitterType"));
-		this.mMaxNumParticles = this.getIntValue(this.getXMLNode(config,"maxParticles"));
-		this.mLifespan = Math.max(0.01,this.getFloatValue(this.getXMLNode(config,"particleLifeSpan")));
-		haxe.Log.trace(config,{ fileName : "PDParticleSystem.hx", lineNumber : 275, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		haxe.Log.trace("1",{ fileName : "PDParticleSystem.hx", lineNumber : 276, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mLifespanVariance = this.getFloatValue(this.getXMLNode(config,"particleLifespanVariance"));
-		haxe.Log.trace("2",{ fileName : "PDParticleSystem.hx", lineNumber : 278, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mStartSize = this.getFloatValue(this.getXMLNode(config,"startParticleSize"));
-		haxe.Log.trace("3",{ fileName : "PDParticleSystem.hx", lineNumber : 280, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mStartSizeVariance = this.getFloatValue(this.getXMLNode(config,"mStartSizeVariance"));
-		haxe.Log.trace("4",{ fileName : "PDParticleSystem.hx", lineNumber : 282, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEndSize = this.getFloatValue(this.getXMLNode(config,"mEndSize"));
-		haxe.Log.trace("5",{ fileName : "PDParticleSystem.hx", lineNumber : 284, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEndSizeVariance = this.getFloatValue(this.getXMLNode(config,"mEndSizeVariance"));
-		haxe.Log.trace("6",{ fileName : "PDParticleSystem.hx", lineNumber : 286, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEmitAngle = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"angle")));
-		haxe.Log.trace("7",{ fileName : "PDParticleSystem.hx", lineNumber : 288, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEmitAngleVariance = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"angleVariance")));
-		haxe.Log.trace("8",{ fileName : "PDParticleSystem.hx", lineNumber : 290, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mStartRotation = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"rotationStart")));
-		haxe.Log.trace("9",{ fileName : "PDParticleSystem.hx", lineNumber : 292, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mStartRotationVariance = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"rotationStartVariance")));
-		haxe.Log.trace("10",{ fileName : "PDParticleSystem.hx", lineNumber : 294, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEndRotation = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"mEndRotation")));
-		haxe.Log.trace("11",{ fileName : "PDParticleSystem.hx", lineNumber : 296, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEndRotationVariance = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"mEndRotationVariance")));
-		haxe.Log.trace("12",{ fileName : "PDParticleSystem.hx", lineNumber : 298, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mSpeed = this.getFloatValue(this.getXMLNode(config,"speed"));
-		haxe.Log.trace("13",{ fileName : "PDParticleSystem.hx", lineNumber : 300, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mSpeedVariance = this.getFloatValue(this.getXMLNode(config,"speedVariance"));
-		haxe.Log.trace("14",{ fileName : "PDParticleSystem.hx", lineNumber : 302, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mRadialAcceleration = this.getFloatValue(this.getXMLNode(config,"radialAcceleration"));
-		haxe.Log.trace("15",{ fileName : "PDParticleSystem.hx", lineNumber : 304, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mRadialAccelerationVariance = this.getFloatValue(this.getXMLNode(config,"radialAccelVariance"));
-		haxe.Log.trace("16",{ fileName : "PDParticleSystem.hx", lineNumber : 306, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mTangentialAcceleration = this.getFloatValue(this.getXMLNode(config,"tangentialAcceleration"));
-		haxe.Log.trace("17",{ fileName : "PDParticleSystem.hx", lineNumber : 308, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mTangentialAccelerationVariance = this.getFloatValue(this.getXMLNode(config,"tangentialAccelVariance"));
-		haxe.Log.trace("18",{ fileName : "PDParticleSystem.hx", lineNumber : 310, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mMaxRadius = this.getFloatValue(this.getXMLNode(config,"maxRadius"));
-		haxe.Log.trace("19",{ fileName : "PDParticleSystem.hx", lineNumber : 312, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mMaxRadiusVariance = this.getFloatValue(this.getXMLNode(config,"maxRadiusVariance"));
-		haxe.Log.trace("20",{ fileName : "PDParticleSystem.hx", lineNumber : 314, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mMinRadius = this.getFloatValue(this.getXMLNode(config,"minRadius"));
-		haxe.Log.trace("21",{ fileName : "PDParticleSystem.hx", lineNumber : 316, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mMinRadiusVariance = this.getFloatValue(this.getXMLNode(config,"minRadiusVariance"));
-		haxe.Log.trace("22",{ fileName : "PDParticleSystem.hx", lineNumber : 318, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mRotatePerSecond = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"rotatePerSecond")));
-		haxe.Log.trace("23",{ fileName : "PDParticleSystem.hx", lineNumber : 320, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mRotatePerSecondVariance = starling.utils.StarlingUtils.deg2rad(this.getFloatValue(this.getXMLNode(config,"rotatePerSecondVariance")));
-		haxe.Log.trace("24",{ fileName : "PDParticleSystem.hx", lineNumber : 322, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mStartColor = this.getColor(this.getXMLNode(config,"startColor"));
-		haxe.Log.trace("25",{ fileName : "PDParticleSystem.hx", lineNumber : 324, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mStartColorVariance = this.getColor(this.getXMLNode(config,"startColorVariance"));
-		haxe.Log.trace("26",{ fileName : "PDParticleSystem.hx", lineNumber : 326, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEndColor = this.getColor(this.getXMLNode(config,"finishColor"));
-		haxe.Log.trace("27",{ fileName : "PDParticleSystem.hx", lineNumber : 328, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mEndColorVariance = this.getColor(this.getXMLNode(config,"finishColorVariance"));
-		haxe.Log.trace("28",{ fileName : "PDParticleSystem.hx", lineNumber : 330, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mBlendFactorSource = this.getBlendFunc(this.getXMLNode(config,"blendFuncSource"));
-		haxe.Log.trace("29",{ fileName : "PDParticleSystem.hx", lineNumber : 332, className : "starling.extensions.PDParticleSystem", methodName : "parseConfig"});
-		this.mBlendFactorDestination = this.getBlendFunc(this.getXMLNode(config,"blendFuncDestination"));
-		if(Math.isNaN(this.mEndSizeVariance)) this.mEndSizeVariance = this.getFloatValue(this.getXMLNode(config,"finishParticleSizeVariance"));
-		if(Math.isNaN(this.mLifespan)) this.mLifespan = Math.max(0.01,this.getFloatValue(this.getXMLNode(config,"particleLifespan")));
-		if(Math.isNaN(this.mLifespanVariance)) this.mLifespanVariance = this.getFloatValue(this.getXMLNode(config,"particleLifeSpanVariance"));
-		if(Math.isNaN(this.mMinRadiusVariance)) this.mMinRadiusVariance = 0.0;
-	}
-	,getIntValue: function(element) {
-		if(element == null) return 0;
-		return Std.parseInt(element.get("value"));
-	}
-	,getFloatValue: function(element) {
-		if(element == null) return 0;
-		return Std.parseFloat(element.get("value"));
-	}
-	,getColor: function(element) {
-		var color = new starling.extensions.ColorArgb();
-		if(element == null) return color;
-		color.red = Std.parseFloat(element.get("red"));
-		color.green = Std.parseFloat(element.get("green"));
-		color.blue = Std.parseFloat(element.get("blue"));
-		color.alpha = Std.parseFloat(element.get("alpha"));
-		return color;
-	}
-	,getBlendFunc: function(element) {
-		var value = this.getIntValue(element);
-		haxe.Log.trace("value = " + value,{ fileName : "PDParticleSystem.hx", lineNumber : 378, className : "starling.extensions.PDParticleSystem", methodName : "getBlendFunc"});
-		switch(value) {
-		case 0:
-			return 0;
-		case 1:
-			return 1;
-		case 768:
-			return 768;
-		case 769:
-			return 769;
-		case 770:
-			return 770;
-		case 771:
-			return 771;
-		case 772:
-			return 772;
-		case 773:
-			return 773;
-		case 774:
-			return 774;
-		case 775:
-			return 775;
-		default:
-			throw new openfl.errors.ArgumentError("unsupported blending function: " + value);
-		}
-	}
-	,get_emitterType: function() {
-		return this.mEmitterType;
-	}
-	,set_emitterType: function(value) {
-		return this.mEmitterType = value;
-	}
-	,get_emitterXVariance: function() {
-		return this.mEmitterXVariance;
-	}
-	,set_emitterXVariance: function(value) {
-		return this.mEmitterXVariance = value;
-	}
-	,get_emitterYVariance: function() {
-		return this.mEmitterYVariance;
-	}
-	,set_emitterYVariance: function(value) {
-		return this.mEmitterYVariance = value;
-	}
-	,get_maxNumParticles: function() {
-		return this.mMaxNumParticles;
-	}
-	,set_maxNumParticles: function(value) {
-		this.set_maxCapacity(value);
-		this.mMaxNumParticles = this.get_maxCapacity();
-		this.updateEmissionRate();
-		return value;
-	}
-	,get_lifespan: function() {
-		return this.mLifespan;
-	}
-	,set_lifespan: function(value) {
-		this.mLifespan = Math.max(0.01,value);
-		this.updateEmissionRate();
-		return value;
-	}
-	,get_lifespanVariance: function() {
-		return this.mLifespanVariance;
-	}
-	,set_lifespanVariance: function(value) {
-		return this.mLifespanVariance = value;
-	}
-	,get_startSize: function() {
-		return this.mStartSize;
-	}
-	,set_startSize: function(value) {
-		return this.mStartSize = value;
-	}
-	,get_startSizeVariance: function() {
-		return this.mStartSizeVariance;
-	}
-	,set_startSizeVariance: function(value) {
-		return this.mStartSizeVariance = value;
-	}
-	,get_endSize: function() {
-		return this.mEndSize;
-	}
-	,set_endSize: function(value) {
-		return this.mEndSize = value;
-	}
-	,get_endSizeVariance: function() {
-		return this.mEndSizeVariance;
-	}
-	,set_endSizeVariance: function(value) {
-		return this.mEndSizeVariance = value;
-	}
-	,get_emitAngle: function() {
-		return this.mEmitAngle;
-	}
-	,set_emitAngle: function(value) {
-		return this.mEmitAngle = value;
-	}
-	,get_emitAngleVariance: function() {
-		return this.mEmitAngleVariance;
-	}
-	,set_emitAngleVariance: function(value) {
-		return this.mEmitAngleVariance = value;
-	}
-	,get_startRotation: function() {
-		return this.mStartRotation;
-	}
-	,set_startRotation: function(value) {
-		return this.mStartRotation = value;
-	}
-	,get_startRotationVariance: function() {
-		return this.mStartRotationVariance;
-	}
-	,set_startRotationVariance: function(value) {
-		return this.mStartRotationVariance = value;
-	}
-	,get_endRotation: function() {
-		return this.mEndRotation;
-	}
-	,set_endRotation: function(value) {
-		return this.mEndRotation = value;
-	}
-	,get_endRotationVariance: function() {
-		return this.mEndRotationVariance;
-	}
-	,set_endRotationVariance: function(value) {
-		return this.mEndRotationVariance = value;
-	}
-	,get_speed: function() {
-		return this.mSpeed;
-	}
-	,set_speed: function(value) {
-		return this.mSpeed = value;
-	}
-	,get_speedVariance: function() {
-		return this.mSpeedVariance;
-	}
-	,set_speedVariance: function(value) {
-		return this.mSpeedVariance = value;
-	}
-	,get_gravityX: function() {
-		return this.mGravityX;
-	}
-	,set_gravityX: function(value) {
-		return this.mGravityX = value;
-	}
-	,get_gravityY: function() {
-		return this.mGravityY;
-	}
-	,set_gravityY: function(value) {
-		return this.mGravityY = value;
-	}
-	,get_radialAcceleration: function() {
-		return this.mRadialAcceleration;
-	}
-	,set_radialAcceleration: function(value) {
-		return this.mRadialAcceleration = value;
-	}
-	,get_radialAccelerationVariance: function() {
-		return this.mRadialAccelerationVariance;
-	}
-	,set_radialAccelerationVariance: function(value) {
-		return this.mRadialAccelerationVariance = value;
-	}
-	,get_tangentialAcceleration: function() {
-		return this.mTangentialAcceleration;
-	}
-	,set_tangentialAcceleration: function(value) {
-		return this.mTangentialAcceleration = value;
-	}
-	,get_tangentialAccelerationVariance: function() {
-		return this.mTangentialAccelerationVariance;
-	}
-	,set_tangentialAccelerationVariance: function(value) {
-		return this.mTangentialAccelerationVariance = value;
-	}
-	,get_maxRadius: function() {
-		return this.mMaxRadius;
-	}
-	,set_maxRadius: function(value) {
-		return this.mMaxRadius = value;
-	}
-	,get_maxRadiusVariance: function() {
-		return this.mMaxRadiusVariance;
-	}
-	,set_maxRadiusVariance: function(value) {
-		return this.mMaxRadiusVariance = value;
-	}
-	,get_minRadius: function() {
-		return this.mMinRadius;
-	}
-	,set_minRadius: function(value) {
-		return this.mMinRadius = value;
-	}
-	,get_minRadiusVariance: function() {
-		return this.mMinRadiusVariance;
-	}
-	,set_minRadiusVariance: function(value) {
-		return this.mMinRadiusVariance = value;
-	}
-	,get_rotatePerSecond: function() {
-		return this.mRotatePerSecond;
-	}
-	,set_rotatePerSecond: function(value) {
-		return this.mRotatePerSecond = value;
-	}
-	,get_rotatePerSecondVariance: function() {
-		return this.mRotatePerSecondVariance;
-	}
-	,set_rotatePerSecondVariance: function(value) {
-		return this.mRotatePerSecondVariance = value;
-	}
-	,get_startColor: function() {
-		return this.mStartColor;
-	}
-	,set_startColor: function(value) {
-		return this.mStartColor = value;
-	}
-	,get_startColorVariance: function() {
-		return this.mStartColorVariance;
-	}
-	,set_startColorVariance: function(value) {
-		return this.mStartColorVariance = value;
-	}
-	,get_endColor: function() {
-		return this.mEndColor;
-	}
-	,set_endColor: function(value) {
-		return this.mEndColor = value;
-	}
-	,get_endColorVariance: function() {
-		return this.mEndColorVariance;
-	}
-	,set_endColorVariance: function(value) {
-		return this.mEndColorVariance = value;
-	}
-	,__class__: starling.extensions.PDParticleSystem
-	,__properties__: $extend(starling.extensions.ParticleSystem.prototype.__properties__,{set_endColorVariance:"set_endColorVariance",get_endColorVariance:"get_endColorVariance",set_endColor:"set_endColor",get_endColor:"get_endColor",set_startColorVariance:"set_startColorVariance",get_startColorVariance:"get_startColorVariance",set_startColor:"set_startColor",get_startColor:"get_startColor",set_rotatePerSecondVariance:"set_rotatePerSecondVariance",get_rotatePerSecondVariance:"get_rotatePerSecondVariance",set_rotatePerSecond:"set_rotatePerSecond",get_rotatePerSecond:"get_rotatePerSecond",set_minRadiusVariance:"set_minRadiusVariance",get_minRadiusVariance:"get_minRadiusVariance",set_minRadius:"set_minRadius",get_minRadius:"get_minRadius",set_maxRadiusVariance:"set_maxRadiusVariance",get_maxRadiusVariance:"get_maxRadiusVariance",set_maxRadius:"set_maxRadius",get_maxRadius:"get_maxRadius",set_tangentialAccelerationVariance:"set_tangentialAccelerationVariance",get_tangentialAccelerationVariance:"get_tangentialAccelerationVariance",set_tangentialAcceleration:"set_tangentialAcceleration",get_tangentialAcceleration:"get_tangentialAcceleration",set_radialAccelerationVariance:"set_radialAccelerationVariance",get_radialAccelerationVariance:"get_radialAccelerationVariance",set_radialAcceleration:"set_radialAcceleration",get_radialAcceleration:"get_radialAcceleration",set_gravityY:"set_gravityY",get_gravityY:"get_gravityY",set_gravityX:"set_gravityX",get_gravityX:"get_gravityX",set_speedVariance:"set_speedVariance",get_speedVariance:"get_speedVariance",set_speed:"set_speed",get_speed:"get_speed",set_endRotationVariance:"set_endRotationVariance",get_endRotationVariance:"get_endRotationVariance",set_endRotation:"set_endRotation",get_endRotation:"get_endRotation",set_startRotationVariance:"set_startRotationVariance",get_startRotationVariance:"get_startRotationVariance",set_startRotation:"set_startRotation",get_startRotation:"get_startRotation",set_emitAngleVariance:"set_emitAngleVariance",get_emitAngleVariance:"get_emitAngleVariance",set_emitAngle:"set_emitAngle",get_emitAngle:"get_emitAngle",set_endSizeVariance:"set_endSizeVariance",get_endSizeVariance:"get_endSizeVariance",set_endSize:"set_endSize",get_endSize:"get_endSize",set_startSizeVariance:"set_startSizeVariance",get_startSizeVariance:"get_startSizeVariance",set_startSize:"set_startSize",get_startSize:"get_startSize",set_lifespanVariance:"set_lifespanVariance",get_lifespanVariance:"get_lifespanVariance",set_lifespan:"set_lifespan",get_lifespan:"get_lifespan",set_maxNumParticles:"set_maxNumParticles",get_maxNumParticles:"get_maxNumParticles",set_emitterYVariance:"set_emitterYVariance",get_emitterYVariance:"get_emitterYVariance",set_emitterXVariance:"set_emitterXVariance",get_emitterXVariance:"get_emitterXVariance",set_emitterType:"set_emitterType",get_emitterType:"get_emitterType"})
-});
 starling.filters = {};
 starling.filters.FragmentFilter = function(numPasses,resolution) {
 	if(resolution == null) resolution = 1.0;
@@ -72739,6 +72184,138 @@ starling.textures.SubTexture.prototype = $extend(starling.textures.Texture.proto
 	,__class__: starling.textures.SubTexture
 	,__properties__: $extend(starling.textures.Texture.prototype.__properties__,{get_transformationMatrix:"get_transformationMatrix",get_clipping:"get_clipping",get_region:"get_region",get_rotated:"get_rotated",get_ownsParent:"get_ownsParent",get_parent:"get_parent"})
 });
+starling.textures.TextureAtlas = function(texture,atlasXml) {
+	this.mSubTextures = new haxe.ds.StringMap();
+	this.mAtlasTexture = texture;
+	if(atlasXml != null) this.parseAtlasXml(atlasXml);
+};
+$hxClasses["starling.textures.TextureAtlas"] = starling.textures.TextureAtlas;
+starling.textures.TextureAtlas.__name__ = ["starling","textures","TextureAtlas"];
+starling.textures.TextureAtlas.parseBool = function(value) {
+	return value.toLowerCase() == "true";
+};
+starling.textures.TextureAtlas.prototype = {
+	mAtlasTexture: null
+	,mSubTextures: null
+	,mSubTextureNames: null
+	,texture: null
+	,dispose: function() {
+		this.mAtlasTexture.dispose();
+	}
+	,parseAtlasXml: function(atlasXml) {
+		haxe.Log.trace("FIX",{ fileName : "TextureAtlas.hx", lineNumber : 105, className : "starling.textures.TextureAtlas", methodName : "parseAtlasXml"});
+		var scale = this.mAtlasTexture.get_scale();
+		var region = new openfl.geom.Rectangle();
+		var frame = new openfl.geom.Rectangle();
+		var $it0 = atlasXml.firstElement().iterator();
+		while( $it0.hasNext() ) {
+			var element = $it0.next();
+			if(element.nodeType == Xml.Element) {
+				var subTexture = element;
+				var name = starling.utils.StarlingUtils.cleanMasterString(subTexture.get("name"));
+				var x = Std.parseFloat(subTexture.get("x")) / scale;
+				var y = Std.parseFloat(subTexture.get("y")) / scale;
+				var width = Std.parseFloat(subTexture.get("width")) / scale;
+				var height = Std.parseFloat(subTexture.get("height")) / scale;
+				var frameX = Std.parseFloat(subTexture.get("frameX")) / scale;
+				var frameY = Std.parseFloat(subTexture.get("frameY")) / scale;
+				var frameWidth = Std.parseFloat(subTexture.get("frameWidth")) / scale;
+				var frameHeight = Std.parseFloat(subTexture.get("frameHeight")) / scale;
+				var rotatedStr = subTexture.get("rotated");
+				var rotated = false;
+				if(rotatedStr != null && rotatedStr.toLowerCase() == "true") rotated = true;
+				region.setTo(x,y,width,height);
+				frame.setTo(frameX,frameY,frameWidth,frameHeight);
+				if(frameWidth > 0 && frameHeight > 0) this.addRegion(name,region,frame,rotated); else this.addRegion(name,region,null,rotated);
+			}
+		}
+	}
+	,getTexture: function(name) {
+		return this.mSubTextures.get(name);
+	}
+	,getTextures: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		if(result == null) result = new Array();
+		var _g = 0;
+		var _g1 = this.getNames(prefix,(function($this) {
+			var $r;
+			var this1 = starling.textures.TextureAtlas.sNames;
+			var value = new Array();
+			{
+				var _g11 = 0;
+				var _g2 = this1.data.length;
+				while(_g11 < _g2) {
+					var i = _g11++;
+					value.push(this1.data[i]);
+				}
+			}
+			$r = value;
+			return $r;
+		}(this)));
+		while(_g < _g1.length) {
+			var name = _g1[_g];
+			++_g;
+			result[result.length] = this.getTexture(name);
+		}
+		var this2 = starling.textures.TextureAtlas.sNames;
+		if(!this2.fixed) {
+			if(0 > this2.length) {
+				var data;
+				var this3;
+				this3 = new Array(0);
+				data = this3;
+				haxe.ds._Vector.Vector_Impl_.blit(this2.data,0,data,0,Std["int"](Math.min(this2.data.length,0)));
+				this2.data = data;
+			}
+			this2.length = 0;
+		}
+		0;
+		return result;
+	}
+	,getNames: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		var name;
+		if(result == null) result = new Array();
+		haxe.Log.trace("FIX SORT",{ fileName : "TextureAtlas.hx", lineNumber : 165, className : "starling.textures.TextureAtlas", methodName : "getNames"});
+		if(this.mSubTextureNames == null) this.mSubTextureNames = this.mSubTextures.keys();
+		var $it0 = this.mSubTextureNames;
+		while( $it0.hasNext() ) {
+			var key = $it0.next();
+			if(key.indexOf(prefix) == 0) result.push(key);
+		}
+		return result;
+	}
+	,getRegion: function(name) {
+		var subTexture = this.mSubTextures.get(name);
+		if(subTexture != null) return subTexture.get_region(); else return null;
+	}
+	,getFrame: function(name) {
+		var subTexture = this.mSubTextures.get(name);
+		if(subTexture != null) return subTexture.get_frame(); else return null;
+	}
+	,getRotation: function(name) {
+		var subTexture = this.mSubTextures.get(name);
+		if(subTexture != null) return subTexture.get_rotated(); else return false;
+	}
+	,addRegion: function(name,region,frame,rotated) {
+		if(rotated == null) rotated = false;
+		var v = new starling.textures.SubTexture(this.mAtlasTexture,region,false,frame,rotated);
+		this.mSubTextures.set(name,v);
+		v;
+		this.mSubTextureNames = null;
+	}
+	,removeRegion: function(name) {
+		var subTexture = this.mSubTextures.get(name);
+		if(subTexture != null) subTexture.dispose();
+		this.mSubTextures.remove(name);
+		this.mSubTextureNames = null;
+	}
+	,get_texture: function() {
+		return this.mAtlasTexture;
+	}
+	,__class__: starling.textures.TextureAtlas
+	,__properties__: {get_texture:"get_texture"}
+};
 starling.textures.TextureOptions = function(scale,mipMapping,format,repeat) {
 	if(repeat == null) repeat = false;
 	if(mipMapping == null) mipMapping = false;
@@ -72824,6 +72401,903 @@ starling.textures.TextureSmoothing.prototype = {
 	__class__: starling.textures.TextureSmoothing
 };
 starling.utils = {};
+starling.utils.AssetManager = function(scaleFactor,useMipmaps) {
+	if(useMipmaps == null) useMipmaps = false;
+	if(scaleFactor == null) scaleFactor = 1;
+	var this1;
+	this1 = new openfl.VectorData();
+	var this2;
+	this2 = new Array(0);
+	this1.data = this2;
+	this1.length = 0;
+	this1.fixed = false;
+	this.mQueue = this1;
+	this.mDefaultTextureOptions = new starling.textures.TextureOptions(scaleFactor,useMipmaps);
+	this.mTextures = new haxe.ds.StringMap();
+	this.mAtlases = new haxe.ds.StringMap();
+	this.mSounds = new haxe.ds.StringMap();
+	this.mXmls = new haxe.ds.StringMap();
+	this.mObjects = new haxe.ds.StringMap();
+	this.mByteArrays = new haxe.ds.StringMap();
+	this.mNumConnections = 1;
+	this.mVerbose = true;
+	starling.events.EventDispatcher.call(this);
+};
+$hxClasses["starling.utils.AssetManager"] = starling.utils.AssetManager;
+starling.utils.AssetManager.__name__ = ["starling","utils","AssetManager"];
+starling.utils.AssetManager.__super__ = starling.events.EventDispatcher;
+starling.utils.AssetManager.prototype = $extend(starling.events.EventDispatcher.prototype,{
+	mStarling: null
+	,mNumLostTextures: null
+	,mNumRestoredTextures: null
+	,mNumLoadingQueues: null
+	,mDefaultTextureOptions: null
+	,mCheckPolicyFile: null
+	,mKeepAtlasXmls: null
+	,mKeepFontXmls: null
+	,mNumConnections: null
+	,mVerbose: null
+	,mQueue: null
+	,mTextures: null
+	,mAtlases: null
+	,mSounds: null
+	,mXmls: null
+	,mObjects: null
+	,mByteArrays: null
+	,queue: null
+	,numQueuedAssets: null
+	,isLoading: null
+	,dispose: function() {
+		var $it0 = this.mTextures.iterator();
+		while( $it0.hasNext() ) {
+			var texture = $it0.next();
+			texture.dispose();
+		}
+		var $it1 = this.mAtlases.iterator();
+		while( $it1.hasNext() ) {
+			var atlas = $it1.next();
+			atlas.dispose();
+		}
+		var $it2 = this.mByteArrays.iterator();
+		while( $it2.hasNext() ) {
+			var byteArray = $it2.next();
+			byteArray.clear();
+		}
+	}
+	,getTexture: function(name) {
+		if(this.mTextures.exists(name)) return this.mTextures.get(name); else {
+			var $it0 = this.mAtlases.iterator();
+			while( $it0.hasNext() ) {
+				var atlas = $it0.next();
+				var texture = atlas.getTexture(name);
+				if(texture != null) return texture;
+			}
+			return null;
+		}
+	}
+	,getTextures: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		if(result == null) result = new Array();
+		var names = this.getTextureNames(prefix,(function($this) {
+			var $r;
+			var this1 = starling.utils.AssetManager.sNames;
+			var value = new Array();
+			{
+				var _g1 = 0;
+				var _g = this1.data.length;
+				while(_g1 < _g) {
+					var i = _g1++;
+					value.push(this1.data[i]);
+				}
+			}
+			$r = value;
+			return $r;
+		}(this)));
+		var _g2 = 0;
+		while(_g2 < names.length) {
+			var name = names[_g2];
+			++_g2;
+			result[result.length] = this.getTexture(name);
+		}
+		var this2 = starling.utils.AssetManager.sNames;
+		if(!this2.fixed) {
+			if(0 > this2.length) {
+				var data;
+				var this3;
+				this3 = new Array(0);
+				data = this3;
+				haxe.ds._Vector.Vector_Impl_.blit(this2.data,0,data,0,Std["int"](Math.min(this2.data.length,0)));
+				this2.data = data;
+			}
+			this2.length = 0;
+		}
+		0;
+		return result;
+	}
+	,getTextureNames: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		result = this.getDictionaryKeys(this.mTextures,prefix,result);
+		var $it0 = this.mAtlases.iterator();
+		while( $it0.hasNext() ) {
+			var atlas = $it0.next();
+			result = atlas.getNames(prefix,result);
+		}
+		result.sort(function(a,b) {
+			a = a.toLowerCase();
+			b = b.toLowerCase();
+			if(a < b) return -1;
+			if(a > b) return 1;
+			return 0;
+		});
+		return result;
+	}
+	,getTextureAtlas: function(name) {
+		return this.mAtlases.get(name);
+	}
+	,getSound: function(name) {
+		return this.mSounds.get(name);
+	}
+	,getSoundNames: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		return this.getDictionaryKeys(this.mSounds,prefix,result);
+	}
+	,playSound: function(name,startTime,loops,transform) {
+		if(loops == null) loops = 0;
+		if(startTime == null) startTime = 0;
+		if(this.mSounds.exists(name)) return this.getSound(name).play(startTime,loops,transform); else return null;
+	}
+	,getXml: function(name) {
+		return this.mXmls.get(name);
+	}
+	,getXmlNames: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		return this.getDictionaryKeys(this.mXmls,prefix,result);
+	}
+	,getObject: function(name) {
+		return this.mObjects.get(name);
+	}
+	,getObjectNames: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		return this.getDictionaryKeys(this.mObjects,prefix,result);
+	}
+	,getByteArray: function(name) {
+		return this.mByteArrays.get(name);
+	}
+	,getByteArrayNames: function(prefix,result) {
+		if(prefix == null) prefix = "";
+		return this.getDictionaryKeys(this.mByteArrays,prefix,result);
+	}
+	,addTexture: function(name,texture) {
+		this.log("Adding texture '" + name + "'");
+		if(this.mTextures.exists(name)) {
+			this.log("Warning: name was already in use; the previous texture will be replaced.");
+			this.mTextures.get(name).dispose();
+		}
+		this.mTextures.set(name,texture);
+		texture;
+	}
+	,addTextureAtlas: function(name,atlas) {
+		this.log("Adding texture atlas '" + name + "'");
+		if(this.mAtlases.exists(name)) {
+			this.log("Warning: name was already in use; the previous atlas will be replaced.");
+			this.mAtlases.get(name).dispose();
+		}
+		this.mAtlases.set(name,atlas);
+		atlas;
+	}
+	,addSound: function(name,sound) {
+		this.log("Adding sound '" + name + "'");
+		if(this.mSounds.exists(name)) this.log("Warning: name was already in use; the previous sound will be replaced.");
+		this.mSounds.set(name,sound);
+		sound;
+	}
+	,addXml: function(name,xml) {
+		this.log("Adding Xml '" + name + "'");
+		if(this.mXmls.exists(name)) this.log("Warning: name was already in use; the previous Xml will be replaced.");
+		this.mXmls.set(name,xml);
+		xml;
+	}
+	,addObject: function(name,object) {
+		this.log("Adding object '" + name + "'");
+		if(this.mObjects.exists(name)) this.log("Warning: name was already in use; the previous object will be replaced.");
+		var v = object;
+		this.mObjects.set(name,v);
+		v;
+	}
+	,addByteArray: function(name,byteArray) {
+		this.log("Adding byte array '" + name + "'");
+		if(this.mByteArrays.exists(name)) {
+			this.log("Warning: name was already in use; the previous byte array will be replaced.");
+			this.mByteArrays.get(name).clear();
+		}
+		this.mByteArrays.set(name,byteArray);
+		byteArray;
+	}
+	,removeTexture: function(name,dispose) {
+		if(dispose == null) dispose = true;
+		this.log("Removing texture '" + name + "'");
+		if(dispose && this.mTextures.exists(name)) this.mTextures.get(name).dispose();
+		this.mTextures.remove(name);
+	}
+	,removeTextureAtlas: function(name,dispose) {
+		if(dispose == null) dispose = true;
+		this.log("Removing texture atlas '" + name + "'");
+		if(dispose && this.mAtlases.exists(name)) this.mAtlases.get(name).dispose();
+		this.mAtlases.remove(name);
+	}
+	,removeSound: function(name) {
+		this.log("Removing sound '" + name + "'");
+		this.mSounds.remove(name);
+	}
+	,removeXml: function(name,dispose) {
+		if(dispose == null) dispose = true;
+		this.log("Removing xml '" + name + "'");
+		if(dispose && this.mXmls.exists(name)) this.mXmls.remove(name);
+	}
+	,removeObject: function(name) {
+		this.log("Removing object '" + name + "'");
+		this.mObjects.remove(name);
+	}
+	,removeByteArray: function(name,dispose) {
+		if(dispose == null) dispose = true;
+		this.log("Removing byte array '" + name + "'");
+		if(dispose && this.mByteArrays.exists(name)) this.mByteArrays.get(name).clear();
+		this.mByteArrays.remove(name);
+	}
+	,purgeQueue: function() {
+		var this1 = this.mQueue;
+		if(!this1.fixed) {
+			if(0 > this1.length) {
+				var data;
+				var this2;
+				this2 = new Array(0);
+				data = this2;
+				haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data,0,Std["int"](Math.min(this1.data.length,0)));
+				this1.data = data;
+			}
+			this1.length = 0;
+		}
+		0;
+		this.dispatchEventWith(starling.events.Event.CANCEL);
+	}
+	,purge: function() {
+		this.log("Purging all assets, emptying queue");
+		this.purgeQueue();
+		this.dispose();
+		this.mTextures = new haxe.ds.StringMap();
+		this.mAtlases = new haxe.ds.StringMap();
+		this.mSounds = new haxe.ds.StringMap();
+		this.mXmls = new haxe.ds.StringMap();
+		this.mObjects = new haxe.ds.StringMap();
+		this.mByteArrays = new haxe.ds.StringMap();
+	}
+	,enqueue: function(rawAssets) {
+		haxe.Log.trace("FIX",{ fileName : "AssetManager.hx", lineNumber : 517, className : "starling.utils.AssetManager", methodName : "enqueue"});
+		if((rawAssets instanceof Array) && rawAssets.__enum__ == null) {
+			var rawAssetsArray = rawAssets;
+			var _g1 = 0;
+			var _g = rawAssetsArray.length;
+			while(_g1 < _g) {
+				var i = _g1++;
+				this.enqueueItem(rawAssetsArray[i]);
+			}
+		} else this.enqueueItem(rawAssets);
+	}
+	,enqueueItem: function(rawAssets) {
+		var fields = Reflect.fields(rawAssets);
+		var _g = 0;
+		while(_g < fields.length) {
+			var field = fields[_g];
+			++_g;
+			var child = Reflect.getProperty(rawAssets,field);
+			if((child instanceof Array) && child.__enum__ == null) this.enqueue(child); else if(typeof(child) == "string" || js.Boot.__instanceof(child,openfl.net.URLRequest)) this.enqueueWithName(child); else this.log("Ignoring unsupported asset type: " + Type.getClassName(Type.getClass(child)));
+		}
+	}
+	,enqueueWithName: function(asset,name,options) {
+		haxe.Log.trace("CHECK",{ fileName : "AssetManager.hx", lineNumber : 597, className : "starling.utils.AssetManager", methodName : "enqueueWithName"});
+		if(Type.getClassName(Type.getClass(asset)) == "flash.filesystem.File") asset = StringTools.urlDecode(Reflect.getProperty(asset,"url"));
+		if(name == null) name = this.getName(asset);
+		if(options == null) options = this.mDefaultTextureOptions.clone(); else options = options.clone();
+		this.log("Enqueuing '" + name + "'");
+		var this1 = this.mQueue;
+		if(!this1.fixed) {
+			this1.length++;
+			if(this1.data.length < this1.length) {
+				var data;
+				var this2;
+				this2 = new Array(this1.data.length + 10);
+				data = this2;
+				haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,data,0,this1.data.length);
+				this1.data = data;
+			}
+			this1.data[this1.length - 1] = { name : name, asset : asset, options : options};
+		}
+		this1.length;
+		return name;
+	}
+	,loadQueue: function(onProgress) {
+		var _g = this;
+		if(onProgress == null) throw new openfl.errors.ArgumentError("Argument 'onProgress' must not be null");
+		if(this.mQueue.length == 0) {
+			onProgress(1.0);
+			return;
+		}
+		this.mStarling = starling.core.Starling.get_current();
+		if(this.mStarling == null || this.mStarling.get_context() == null) throw new openfl.errors.Error("The Starling instance needs to be ready before assets can be loaded.");
+		var PROGRESS_PART_ASSETS = 0.9;
+		var PROGRESS_PART_XMLS = 1.0 - PROGRESS_PART_ASSETS;
+		var i;
+		var canceled = false;
+		var xmls = new Array();
+		var assetInfos;
+		var this1 = this.mQueue;
+		var a;
+		var this2;
+		var this3;
+		this3 = new openfl.VectorData();
+		var this4;
+		this4 = new Array(0);
+		this3.data = this4;
+		this3.length = 0;
+		this3.fixed = false;
+		this2 = this3;
+		a = this2;
+		var vectorData = new openfl.VectorData();
+		if(a != null) vectorData.length = this1.length + a.length; else vectorData.length = this1.length;
+		vectorData.fixed = false;
+		var this5;
+		this5 = new Array(vectorData.length);
+		vectorData.data = this5;
+		haxe.ds._Vector.Vector_Impl_.blit(this1.data,0,vectorData.data,0,this1.length);
+		if(a != null) haxe.ds._Vector.Vector_Impl_.blit(a.data,0,vectorData.data,this1.length,a.length);
+		assetInfos = vectorData;
+		var assetCount = this.mQueue.length;
+		var assetProgress = new Array();
+		var assetIndex = 0;
+		var updateAssetProgress = null;
+		var loadQueueElement = null;
+		var loadNextQueueElement = null;
+		var processXmls = null;
+		var processXml = null;
+		var cancel = null;
+		var finish = null;
+		updateAssetProgress = function(index,progress) {
+			assetProgress[index] = progress;
+			var sum = 0.0;
+			var len = assetProgress.length;
+			var _g1 = 0;
+			while(_g1 < len) {
+				var i1 = _g1++;
+				sum += assetProgress[i1];
+			}
+			onProgress(sum / len * PROGRESS_PART_ASSETS);
+		};
+		loadQueueElement = function(index1,assetInfo) {
+			if(canceled) return;
+			var onElementProgress = function(progress1) {
+				updateAssetProgress(index1,progress1 * 0.8);
+			};
+			var onElementLoaded = function() {
+				updateAssetProgress(index1,1.0);
+				assetCount--;
+				if(assetCount > 0) loadNextQueueElement(); else processXmls();
+			};
+			_g.processRawAsset(assetInfo.name,assetInfo.asset,assetInfo.options,xmls,onElementProgress,onElementLoaded);
+		};
+		loadNextQueueElement = function() {
+			if(assetIndex < assetInfos.length) {
+				var index2 = assetIndex++;
+				loadQueueElement(index2,assetInfos.data[index2]);
+			}
+		};
+		processXmls = function() {
+			haxe.Log.trace("FIX",{ fileName : "AssetManager.hx", lineNumber : 717, className : "starling.utils.AssetManager", methodName : "loadQueue"});
+			haxe.Timer.delay(function() {
+				processXml(0);
+			},1);
+		};
+		processXml = function(index3) {
+			if(canceled) return; else if(index3 == xmls.length) {
+				finish();
+				return;
+			}
+			haxe.Log.trace("FIX",{ fileName : "AssetManager.hx", lineNumber : 737, className : "starling.utils.AssetManager", methodName : "loadQueue"});
+			var name;
+			var texture;
+			var xml = xmls[index3];
+			var rootNode = "";
+			var xmlProgress = (index3 + 1) / (xmls.length + 1);
+			var firstElement = xml.firstElement();
+			if(firstElement.nodeType == Xml.Element) rootNode = firstElement.get_nodeName();
+			if(rootNode == "TextureAtlas") {
+				name = firstElement.get("imagePath").split(".")[0];
+				texture = _g.getTexture(name);
+				if(texture != null) {
+					_g.addTextureAtlas(name,new starling.textures.TextureAtlas(texture,xml));
+					_g.removeTexture(name,false);
+					if(_g.mKeepAtlasXmls) _g.addXml(name,xml);
+				} else _g.log("Cannot create atlas: texture '" + name + "' is missing.");
+			} else if(rootNode == "font") {
+				name = "";
+				var $it0 = xml.elementsNamed("font");
+				while( $it0.hasNext() ) {
+					var font = $it0.next();
+					if(font.nodeType == Xml.Element) {
+						var $it1 = font.elementsNamed("pages");
+						while( $it1.hasNext() ) {
+							var pages = $it1.next();
+							if(pages.nodeType == Xml.Element) {
+								var $it2 = pages.elementsNamed("page");
+								while( $it2.hasNext() ) {
+									var page = $it2.next();
+									if(page.nodeType == Xml.Element) name = page.get("file").split(".")[0];
+								}
+							}
+						}
+					}
+				}
+				texture = _g.getTexture(name);
+				if(texture != null) {
+					_g.log("Adding bitmap font '" + name + "'");
+					starling.text.TextField.registerBitmapFont(new starling.text.BitmapFont(texture,xml),name);
+					_g.removeTexture(name,false);
+					if(_g.mKeepFontXmls) _g.addXml(name,xml);
+				} else _g.log("Cannot create bitmap font: texture '" + name + "' is missing.");
+			} else throw new openfl.errors.Error("Xml contents not recognized: " + rootNode);
+			onProgress(PROGRESS_PART_ASSETS + PROGRESS_PART_XMLS * xmlProgress);
+			haxe.Timer.delay(function() {
+				processXml(index3 + 1);
+			},1);
+		};
+		cancel = function() {
+			_g.removeEventListener(starling.events.Event.CANCEL,cancel);
+			_g.mNumLoadingQueues--;
+			canceled = true;
+		};
+		finish = function() {
+			openfl.system.System.gc();
+			haxe.Timer.delay(function() {
+				if(!canceled) {
+					cancel();
+					onProgress(1.0);
+				}
+			},1);
+		};
+		var _g2 = 0;
+		while(_g2 < assetCount) {
+			var i2 = _g2++;
+			assetProgress[i2] = 0.0;
+		}
+		var _g11 = 0;
+		var _g3 = this.mNumConnections;
+		while(_g11 < _g3) {
+			var i3 = _g11++;
+			loadNextQueueElement();
+		}
+		var this6 = this.mQueue;
+		if(!this6.fixed) {
+			if(0 > this6.length) {
+				var data;
+				var this7;
+				this7 = new Array(0);
+				data = this7;
+				haxe.ds._Vector.Vector_Impl_.blit(this6.data,0,data,0,Std["int"](Math.min(this6.data.length,0)));
+				this6.data = data;
+			}
+			this6.length = 0;
+		}
+		0;
+		this.mNumLoadingQueues++;
+		this.addEventListener(starling.events.Event.CANCEL,cancel);
+	}
+	,processRawAsset: function(name,rawAsset,options,xmls,onProgress,onComplete) {
+		var _g = this;
+		var canceled = false;
+		var process = null;
+		var progress = null;
+		var cancel = null;
+		process = function(asset) {
+			var texture;
+			var bytes;
+			var object = null;
+			var xml = null;
+			_g.mStarling.makeCurrent();
+			if(canceled) {
+			} else if(asset == null) onComplete(); else if(js.Boot.__instanceof(asset,openfl.media.Sound)) {
+				_g.addSound(name,asset);
+				onComplete();
+			} else if(js.Boot.__instanceof(asset,Xml)) {
+				haxe.Log.trace("CHECK",{ fileName : "AssetManager.hx", lineNumber : 878, className : "starling.utils.AssetManager", methodName : "processRawAsset"});
+				xml = asset;
+				var firstNodeName = "";
+				if(xml.firstElement().nodeType == Xml.Element) firstNodeName = xml.firstElement().get_nodeName();
+				if(firstNodeName == "TextureAtlas" || firstNodeName == "font") xmls.push(xml); else _g.addXml(name,xml);
+				onComplete();
+			} else if(starling.core.Starling.get_handleLostContext() && _g.mStarling.get_context().driverInfo == "Disposed") {
+				_g.log("Context lost while processing assets, retrying ...");
+				haxe.Timer.delay(function() {
+					process(asset);
+				},1);
+				return;
+			} else if(js.Boot.__instanceof(asset,openfl.display.Bitmap)) {
+				texture = starling.textures.Texture.fromData(asset,options);
+				texture.get_root().set_onRestore(function() {
+					_g.mNumLostTextures++;
+					_g.loadRawAsset(rawAsset,null,function(asset1) {
+						try {
+							texture.get_root().uploadBitmap(asset1);
+						} catch( e ) {
+							if( js.Boot.__instanceof(e,openfl.errors.Error) ) {
+								_g.log("Texture restoration failed: " + e.message);
+							} else throw(e);
+						}
+						asset1.bitmapData.dispose();
+						_g.mNumRestoredTextures++;
+						if(_g.mNumLostTextures == _g.mNumRestoredTextures) _g.dispatchEventWith(starling.events.Event.TEXTURES_RESTORED);
+					});
+				});
+				asset.bitmapData.dispose();
+				_g.addTexture(name,texture);
+				onComplete();
+			} else if(js.Boot.__instanceof(asset,openfl.display.BitmapData)) {
+				texture = starling.textures.Texture.fromData(asset,options);
+				texture.get_root().set_onRestore(function() {
+					_g.mNumLostTextures++;
+					_g.loadRawAsset(rawAsset,null,function(asset2) {
+						try {
+							texture.get_root().uploadBitmapData(asset2);
+						} catch( e1 ) {
+							if( js.Boot.__instanceof(e1,openfl.errors.Error) ) {
+								_g.log("Texture restoration failed: " + e1.message);
+							} else throw(e1);
+						}
+						asset2.dispose();
+						_g.mNumRestoredTextures++;
+						if(_g.mNumLostTextures == _g.mNumRestoredTextures) _g.dispatchEventWith(starling.events.Event.TEXTURES_RESTORED);
+					});
+				});
+				asset.dispose();
+				_g.addTexture(name,texture);
+				onComplete();
+			} else if(js.Boot.__instanceof(asset,lime.utils.ByteArray)) {
+				bytes = asset;
+				if(starling.textures.AtfData.isAtfData(bytes)) {
+					options.set_onReady(_g.prependCallback(options.get_onReady(),onComplete));
+					texture = starling.textures.Texture.fromData(bytes,options);
+					texture.get_root().set_onRestore(function() {
+						_g.mNumLostTextures++;
+						_g.loadRawAsset(rawAsset,null,function(asset3) {
+							try {
+								texture.get_root().uploadAtfData(asset3,0,true);
+							} catch( e2 ) {
+								if( js.Boot.__instanceof(e2,openfl.errors.Error) ) {
+									_g.log("Texture restoration failed: " + e2.message);
+								} else throw(e2);
+							}
+							asset3.clear();
+							_g.mNumRestoredTextures++;
+							if(_g.mNumLostTextures == _g.mNumRestoredTextures) _g.dispatchEventWith(starling.events.Event.TEXTURES_RESTORED);
+						});
+					});
+					bytes.clear();
+					_g.addTexture(name,texture);
+				} else if(_g.byteArrayStartsWith(bytes,"{") || _g.byteArrayStartsWith(bytes,"[")) haxe.Log.trace("FIX",{ fileName : "AssetManager.hx", lineNumber : 976, className : "starling.utils.AssetManager", methodName : "processRawAsset"}); else if(_g.byteArrayStartsWith(bytes,"<")) haxe.Log.trace("FIX",{ fileName : "AssetManager.hx", lineNumber : 991, className : "starling.utils.AssetManager", methodName : "processRawAsset"}); else {
+					_g.addByteArray(name,bytes);
+					onComplete();
+				}
+			} else {
+				_g.addObject(name,asset);
+				onComplete();
+			}
+			asset = null;
+			bytes = null;
+			_g.removeEventListener(starling.events.Event.CANCEL,cancel);
+		};
+		progress = function(ratio) {
+			if(!canceled) onProgress(ratio);
+		};
+		cancel = function() {
+			canceled = true;
+		};
+		this.addEventListener(starling.events.Event.CANCEL,cancel);
+		this.loadRawAsset(rawAsset,progress,process);
+	}
+	,loadRawAsset: function(rawAsset,onProgress,onComplete) {
+		var _g = this;
+		var onIoError = null;
+		var onSecurityError = null;
+		var onHttpResponseStatus = null;
+		var onLoadProgress = null;
+		var onUrlLoaderComplete = null;
+		var onLoaderComplete = null;
+		var complete = null;
+		var extension = null;
+		var loaderInfo = null;
+		var urlLoader = null;
+		var urlRequest = null;
+		var url = null;
+		onIoError = function(event) {
+			_g.log("IO error: " + event.text);
+			_g.dispatchEventWith(starling.events.Event.IO_ERROR,false,url);
+			complete(null);
+		};
+		onSecurityError = function(event1) {
+			_g.log("security error: " + event1.text);
+			_g.dispatchEventWith(starling.events.Event.SECURITY_ERROR,false,url);
+			complete(null);
+		};
+		onHttpResponseStatus = function(event2) {
+			haxe.Log.trace("FIX",{ fileName : "AssetManager.hx", lineNumber : 1082, className : "starling.utils.AssetManager", methodName : "loadRawAsset"});
+		};
+		onLoadProgress = function(event3) {
+			if(onProgress != null && event3.bytesTotal > 0) onProgress(event3.bytesLoaded / event3.bytesTotal);
+		};
+		onUrlLoaderComplete = function(event4) {
+			var bytes = _g.transformData(urlLoader.data,url);
+			var sound;
+			if(bytes == null) {
+				complete(null);
+				return;
+			}
+			if(extension != null) extension = extension.toLowerCase();
+			switch(extension) {
+			case "mpeg":
+				break;
+			case "mp3":
+				sound = new openfl.media.Sound();
+				sound.loadCompressedDataFromByteArray(bytes,bytes.length);
+				bytes.clear();
+				complete(sound);
+				break;
+			case "jpg":
+				break;
+			case "jpeg":
+				break;
+			case "png":
+				break;
+			case "gif":
+				var loaderContext = new openfl.system.LoaderContext(_g.mCheckPolicyFile);
+				var loader = new openfl.display.Loader();
+				loaderInfo = loader.contentLoaderInfo;
+				loaderInfo.addEventListener(openfl.events.IOErrorEvent.IO_ERROR,onIoError);
+				loaderInfo.addEventListener(starling.events.Event.COMPLETE,onLoaderComplete);
+				loader.loadBytes(bytes);
+				break;
+			default:
+				complete(bytes);
+			}
+		};
+		onLoaderComplete = function(event5) {
+			urlLoader.data.clear();
+			complete(event5.target.content);
+		};
+		complete = function(asset) {
+			if(urlLoader != null) {
+				urlLoader.removeEventListener(openfl.events.IOErrorEvent.IO_ERROR,onIoError);
+				urlLoader.removeEventListener(openfl.events.SecurityErrorEvent.SECURITY_ERROR,onSecurityError);
+				urlLoader.removeEventListener(starling.utils.AssetManager.HTTP_RESPONSE_STATUS,onHttpResponseStatus);
+				urlLoader.removeEventListener(openfl.events.ProgressEvent.PROGRESS,onLoadProgress);
+				urlLoader.removeEventListener(starling.events.Event.COMPLETE,onUrlLoaderComplete);
+			}
+			if(loaderInfo != null) {
+				loaderInfo.removeEventListener(openfl.events.IOErrorEvent.IO_ERROR,onIoError);
+				loaderInfo.removeEventListener(starling.events.Event.COMPLETE,onLoaderComplete);
+			}
+			haxe.Log.trace("SystemUtil.isDesktop = " + Std.string(starling.utils.SystemUtil.get_isDesktop()),{ fileName : "AssetManager.hx", lineNumber : 1165, className : "starling.utils.AssetManager", methodName : "loadRawAsset"});
+			haxe.Log.trace("CHECK THIS IS NEEDED",{ fileName : "AssetManager.hx", lineNumber : 1167, className : "starling.utils.AssetManager", methodName : "loadRawAsset"});
+			onComplete(asset);
+		};
+		if(js.Boot.__instanceof(rawAsset,Class)) haxe.Timer.delay(function() {
+			complete(Type.createInstance(rawAsset,[]));
+		},1); else if(typeof(rawAsset) == "string" || js.Boot.__instanceof(rawAsset,openfl.net.URLRequest)) {
+			if(typeof(rawAsset) == "string") urlRequest = new openfl.net.URLRequest(rawAsset); else urlRequest = rawAsset;
+			url = urlRequest.url;
+			extension = this.getExtensionFromUrl(url);
+			urlLoader = new openfl.net.URLLoader();
+			urlLoader.set_dataFormat(openfl.net.URLLoaderDataFormat.BINARY);
+			urlLoader.addEventListener(openfl.events.IOErrorEvent.IO_ERROR,onIoError);
+			urlLoader.addEventListener(openfl.events.SecurityErrorEvent.SECURITY_ERROR,onSecurityError);
+			urlLoader.addEventListener(starling.utils.AssetManager.HTTP_RESPONSE_STATUS,onHttpResponseStatus);
+			urlLoader.addEventListener(openfl.events.ProgressEvent.PROGRESS,onLoadProgress);
+			urlLoader.addEventListener(starling.events.Event.COMPLETE,onUrlLoaderComplete);
+			urlLoader.load(urlRequest);
+		} else if(js.Boot.__instanceof(rawAsset,Dynamic)) haxe.Timer.delay(function() {
+			complete(rawAsset);
+		},1);
+	}
+	,getName: function(rawAsset) {
+		var name = null;
+		if(typeof(rawAsset) == "string") name = js.Boot.__cast(rawAsset , String); else if(js.Boot.__instanceof(rawAsset,openfl.net.URLRequest)) name = (js.Boot.__cast(rawAsset , openfl.net.URLRequest)).url;
+		if(name != null) {
+			name = StringTools.replace(name,"%20"," ");
+			name = this.getBasenameFromUrl(name);
+			if(name != null) return name; else throw new openfl.errors.ArgumentError("Could not extract name from String '" + Std.string(rawAsset) + "'");
+		} else {
+			name = Type.getClassName(Type.getClass(rawAsset));
+			throw new openfl.errors.ArgumentError("Cannot extract names for objects of type '" + name + "'");
+		}
+	}
+	,transformData: function(data,url) {
+		return data;
+	}
+	,log: function(message) {
+		if(this.mVerbose) haxe.Log.trace("[AssetManager]",{ fileName : "AssetManager.hx", lineNumber : 1257, className : "starling.utils.AssetManager", methodName : "log", customParams : [message]});
+	}
+	,byteArrayStartsWith: function(bytes,$char) {
+		var start = 0;
+		var length = bytes.length;
+		var wanted = HxOverrides.cca($char,0);
+		var b0 = 0;
+		var b1 = 0;
+		var b2 = 0;
+		var b3 = 0;
+		var pass = false;
+		if(pass == false && length >= 4) {
+			bytes.position = 0;
+			b0 = bytes.readByte();
+			b1 = bytes.readByte();
+			b2 = bytes.readByte();
+			b3 = bytes.readByte();
+			if(b0 == 0 && b1 == 0 && b2 == 254 && b3 == 255 || b0 == 255 && b1 == 254 && b2 == 0 && b3 == 0) {
+				start = 4;
+				pass = true;
+			}
+		}
+		if(pass == false && length >= 3) {
+			bytes.position = 0;
+			b0 = bytes.readByte();
+			b1 = bytes.readByte();
+			b2 = bytes.readByte();
+			if(b0 == 239 && b1 == 187 && b2 == 191) {
+				start = 3;
+				pass = true;
+			}
+		}
+		if(pass == false && length >= 2) {
+			bytes.position = 0;
+			b0 = bytes.readByte();
+			b1 = bytes.readByte();
+			if(b0 == 254 && b1 == 255 || b0 == 255 && b1 == 254) {
+				start = 2;
+				pass = true;
+			}
+		}
+		bytes.position = start;
+		var _g = start;
+		while(_g < length) {
+			var i = _g++;
+			var $byte = bytes.readByte();
+			if($byte == 0 || $byte == 10 || $byte == 13 || $byte == 32) continue; else return $byte == wanted;
+		}
+		return false;
+	}
+	,getDictionaryKeys: function(map,prefix,result) {
+		if(prefix == null) prefix = "";
+		if(result == null) result = new Array();
+		haxe.Log.trace("CHECK!",{ fileName : "AssetManager.hx", lineNumber : 1326, className : "starling.utils.AssetManager", methodName : "getDictionaryKeys"});
+		var $it0 = map.keys();
+		while( $it0.hasNext() ) {
+			var key = $it0.next();
+			if(key.indexOf(prefix) == 0) result.push(key);
+		}
+		haxe.Log.trace("CHECK Array.CASEINSENSITIVE is needed",{ fileName : "AssetManager.hx", lineNumber : 1341, className : "starling.utils.AssetManager", methodName : "getDictionaryKeys"});
+		return result;
+	}
+	,getHttpHeader: function(headers,headerName) {
+		if(headers != null) {
+			var _g1 = 0;
+			var _g = headers.length;
+			while(_g1 < _g) {
+				var i = _g1++;
+				var header = headers[i];
+				if(Reflect.getProperty(header,"name") == headerName) return Reflect.getProperty(header,"value");
+			}
+		}
+		return null;
+	}
+	,getBasenameFromUrl: function(url) {
+		haxe.Log.trace("RESTORE REGEX",{ fileName : "AssetManager.hx", lineNumber : 1364, className : "starling.utils.AssetManager", methodName : "getBasenameFromUrl"});
+		var split = url.split("/");
+		var returnVal = split[split.length - 1];
+		var split1 = url.split(".");
+		return split1[0];
+	}
+	,getExtensionFromUrl: function(url) {
+		haxe.Log.trace("RESTORE REGEX",{ fileName : "AssetManager.hx", lineNumber : 1377, className : "starling.utils.AssetManager", methodName : "getExtensionFromUrl"});
+		var split = url.split("/");
+		var returnVal = split[split.length - 1];
+		var split1 = url.split(".");
+		return split1[split1.length - 1];
+	}
+	,prependCallback: function(oldCallback,newCallback) {
+		if(oldCallback == null) return newCallback; else if(newCallback == null) return oldCallback; else return function() {
+			newCallback();
+			oldCallback();
+		};
+	}
+	,get_queue: function() {
+		var this1 = this.mQueue;
+		var value = new Array();
+		var _g1 = 0;
+		var _g = this1.data.length;
+		while(_g1 < _g) {
+			var i = _g1++;
+			value.push(this1.data[i]);
+		}
+		return value;
+	}
+	,get_numQueuedAssets: function() {
+		return this.mQueue.length;
+	}
+	,get_verbose: function() {
+		return this.mVerbose;
+	}
+	,set_verbose: function(value) {
+		this.mVerbose = value;
+		return value;
+	}
+	,get_isLoading: function() {
+		return this.mNumLoadingQueues > 0;
+	}
+	,get_useMipMaps: function() {
+		return this.mDefaultTextureOptions.get_mipMapping();
+	}
+	,set_useMipMaps: function(value) {
+		this.mDefaultTextureOptions.set_mipMapping(value);
+		return value;
+	}
+	,get_textureRepeat: function() {
+		return this.mDefaultTextureOptions.get_repeat();
+	}
+	,set_textureRepeat: function(value) {
+		this.mDefaultTextureOptions.set_repeat(value);
+		return value;
+	}
+	,get_scaleFactor: function() {
+		return this.mDefaultTextureOptions.get_scale();
+	}
+	,set_scaleFactor: function(value) {
+		this.mDefaultTextureOptions.set_scale(value);
+		return value;
+	}
+	,get_textureFormat: function() {
+		return this.mDefaultTextureOptions.get_format();
+	}
+	,set_textureFormat: function(value) {
+		this.mDefaultTextureOptions.set_format(value);
+		return value;
+	}
+	,get_checkPolicyFile: function() {
+		return this.mCheckPolicyFile;
+	}
+	,set_checkPolicyFile: function(value) {
+		this.mCheckPolicyFile = value;
+		return value;
+	}
+	,get_keepAtlasXmls: function() {
+		return this.mKeepAtlasXmls;
+	}
+	,set_keepAtlasXmls: function(value) {
+		this.mKeepAtlasXmls = value;
+		return value;
+	}
+	,get_keepFontXmls: function() {
+		return this.mKeepFontXmls;
+	}
+	,set_keepFontXmls: function(value) {
+		this.mKeepFontXmls = value;
+		return value;
+	}
+	,get_numConnections: function() {
+		return this.mNumConnections;
+	}
+	,set_numConnections: function(value) {
+		this.mNumConnections = value;
+		return value;
+	}
+	,__class__: starling.utils.AssetManager
+	,__properties__: {set_numConnections:"set_numConnections",get_numConnections:"get_numConnections",set_keepFontXmls:"set_keepFontXmls",get_keepFontXmls:"get_keepFontXmls",set_keepAtlasXmls:"set_keepAtlasXmls",get_keepAtlasXmls:"get_keepAtlasXmls",set_checkPolicyFile:"set_checkPolicyFile",get_checkPolicyFile:"get_checkPolicyFile",set_textureFormat:"set_textureFormat",get_textureFormat:"get_textureFormat",set_scaleFactor:"set_scaleFactor",get_scaleFactor:"get_scaleFactor",set_textureRepeat:"set_textureRepeat",get_textureRepeat:"get_textureRepeat",set_useMipMaps:"set_useMipMaps",get_useMipMaps:"get_useMipMaps",get_isLoading:"get_isLoading",set_verbose:"set_verbose",get_verbose:"get_verbose",get_numQueuedAssets:"get_numQueuedAssets",get_queue:"get_queue"}
+});
 starling.utils.Color = function() {
 	throw new starling.errors.AbstractClassError();
 };
@@ -74516,6 +74990,12 @@ away3d.core.managers.Mouse3DManager._collidingView = -1;
 away3d.core.managers.Stage3DManager._numStageProxies = 0;
 openfl.geom.Matrix.__identity = new openfl.geom.Matrix();
 away3d.core.managers.Stage3DProxy._frameEventDriver = new openfl.display.Shape();
+away3d.core.managers.Stage3DProxy._vbCount = 0;
+away3d.core.managers.Stage3DProxy._ibCount = 0;
+away3d.core.managers.Stage3DProxy._vbUploadCount = 0;
+away3d.core.managers.Stage3DProxy._ibUploadCount = 0;
+away3d.core.managers.Stage3DProxy._bmpUploadCount = 0;
+away3d.core.managers.Stage3DProxy._atfUploadCount = 0;
 away3d.core.managers.Touch3DManager._collidingObjectFromTouchId = new haxe.ds.IntMap();
 away3d.core.managers.Touch3DManager._previousCollidingObjectFromTouchId = new haxe.ds.IntMap();
 away3d.core.managers.Touch3DManager._queuedEvents = (function($this) {
@@ -74708,13 +75188,16 @@ com.imagination.robotlegs.starling.services.ServiceConfig.__meta__ = { fields : 
 com.imagination.robotlegs.starling.services.ServiceConfig.__rtti = "<class path=\"com.imagination.robotlegs.starling.services.ServiceConfig\" params=\"\">\n\t<implements path=\"robotlegs.bender.framework.api.IConfig\"/>\n\t<injector public=\"1\">\n\t\t<c path=\"robotlegs.bender.framework.api.IInjector\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</injector>\n\t<configure public=\"1\" set=\"method\" line=\"20\"><f a=\"\"><x path=\"Void\"/></f></configure>\n\t<new public=\"1\" set=\"method\" line=\"18\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 com.imagination.robotlegs.starling.services.example.ExampleService.__rtti = "<class path=\"com.imagination.robotlegs.starling.services.example.ExampleService\" params=\"\">\n\t<new public=\"1\" set=\"method\" line=\"12\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 com.imagination.robotlegs.starling.view.ViewConfig.__meta__ = { fields : { context : { inject : null}, commandMap : { inject : null}, mediatorMap : { inject : null}, stack : { inject : null}, renderer : { inject : null}, contextView : { inject : null}}};
-com.imagination.robotlegs.starling.view.ViewConfig.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.ViewConfig\" params=\"\">\n\t<implements path=\"robotlegs.bender.framework.api.IConfig\"/>\n\t<context public=\"1\">\n\t\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</context>\n\t<commandMap public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.signalCommandMap.api.ISignalCommandMap\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</commandMap>\n\t<mediatorMap public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.mediatorMap.api.IMediatorMap\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</mediatorMap>\n\t<stack public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IStack\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</stack>\n\t<renderer public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</renderer>\n\t<contextView public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.contextView.ContextView\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</contextView>\n\t<configure public=\"1\" set=\"method\" line=\"45\"><f a=\"\"><x path=\"Void\"/></f></configure>\n\t<init set=\"method\" line=\"50\"><f a=\"\"><x path=\"Void\"/></f></init>\n\t<OnContext3DReady set=\"method\" line=\"57\"><f a=\"\"><x path=\"Void\"/></f></OnContext3DReady>\n\t<mapMediators set=\"method\" line=\"64\"><f a=\"\"><x path=\"Void\"/></f></mapMediators>\n\t<initView set=\"method\" line=\"74\"><f a=\"\"><x path=\"Void\"/></f></initView>\n\t<new public=\"1\" set=\"method\" line=\"40\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+com.imagination.robotlegs.starling.view.ViewConfig.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.ViewConfig\" params=\"\">\n\t<implements path=\"robotlegs.bender.framework.api.IConfig\"/>\n\t<context public=\"1\">\n\t\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</context>\n\t<commandMap public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.signalCommandMap.api.ISignalCommandMap\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</commandMap>\n\t<mediatorMap public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.mediatorMap.api.IMediatorMap\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</mediatorMap>\n\t<stack public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IStack\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</stack>\n\t<renderer public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</renderer>\n\t<contextView public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.contextView.ContextView\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</contextView>\n\t<configure public=\"1\" set=\"method\" line=\"47\"><f a=\"\"><x path=\"Void\"/></f></configure>\n\t<init set=\"method\" line=\"52\"><f a=\"\"><x path=\"Void\"/></f></init>\n\t<OnContext3DReady set=\"method\" line=\"59\"><f a=\"\"><x path=\"Void\"/></f></OnContext3DReady>\n\t<mapMediators set=\"method\" line=\"66\"><f a=\"\"><x path=\"Void\"/></f></mapMediators>\n\t<initView set=\"method\" line=\"76\"><f a=\"\"><x path=\"Void\"/></f></initView>\n\t<new public=\"1\" set=\"method\" line=\"42\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 com.imagination.robotlegs.starling.view.away3d.MainAwayLayer.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.MainAwayLayer\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.away3d.impl.AwayLayer\"/>\n\t<exampleAwayObject><c path=\"com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject\"/></exampleAwayObject>\n\t<initialize public=\"1\" set=\"method\" line=\"27\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<Update set=\"method\" line=\"45\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></Update>\n\t<process public=\"1\" set=\"method\" line=\"50\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></process>\n\t<new public=\"1\" set=\"method\" line=\"22\"><f a=\"profile\">\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.away3d.impl.AwayLayer\"/>\n\t<exampleAwayObject><c path=\"com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject\"/></exampleAwayObject>\n\t<initialize public=\"1\" set=\"method\" line=\"27\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<Update set=\"method\" line=\"36\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></Update>\n\t<process public=\"1\" set=\"method\" line=\"41\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></process>\n\t<new public=\"1\" set=\"method\" line=\"22\"><f a=\"profile\">\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.bundles.mvcs.Mediator.__meta__ = { fields : { eventMap : { inject : null}, eventDispatcher : { inject : null}}};
 robotlegs.bender.bundles.mvcs.Mediator.__rtti = "<class path=\"robotlegs.bender.bundles.mvcs.Mediator\" params=\"\">\n\t<implements path=\"robotlegs.bender.extensions.mediatorMap.api.IMediator\"/>\n\t<eventMap public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.localEventMap.api.IEventMap\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</eventMap>\n\t<eventDispatcher public=\"1\">\n\t\t<c path=\"openfl.events.IEventDispatcher\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</eventDispatcher>\n\t<_viewComponent><d/></_viewComponent>\n\t<set_viewComponent public=\"1\" set=\"method\" line=\"39\"><f a=\"view\">\n\t<d/>\n\t<x path=\"Void\"/>\n</f></set_viewComponent>\n\t<initialize public=\"1\" set=\"method\" line=\"51\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<destroy public=\"1\" set=\"method\" line=\"58\"><f a=\"\"><x path=\"Void\"/></f></destroy>\n\t<postDestroy public=\"1\" set=\"method\" line=\"66\"><f a=\"\"><x path=\"Void\"/></f></postDestroy>\n\t<addViewListener set=\"method\" line=\"75\"><f a=\"eventString:listener:?eventClass\" v=\"::null\">\n\t<c path=\"String\"/>\n\t<d/>\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Void\"/>\n</f></addViewListener>\n\t<addContextListener set=\"method\" line=\"80\"><f a=\"eventString:listener:?eventClass\" v=\"::null\">\n\t<c path=\"String\"/>\n\t<d/>\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Void\"/>\n</f></addContextListener>\n\t<removeViewListener set=\"method\" line=\"85\"><f a=\"eventString:listener:?eventClass\" v=\"::null\">\n\t<c path=\"String\"/>\n\t<d/>\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Void\"/>\n</f></removeViewListener>\n\t<removeContextListener set=\"method\" line=\"90\"><f a=\"eventString:listener:?eventClass\" v=\"::null\">\n\t<c path=\"String\"/>\n\t<d/>\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Void\"/>\n</f></removeContextListener>\n\t<dispatch set=\"method\" line=\"95\"><f a=\"event\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></dispatch>\n\t<meta>\n\t\t<m n=\":keepSub\"/>\n\t\t<m n=\":rtti\"/>\n\t</meta>\n</class>";
 com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator.__meta__ = { fields : { view : { inject : null}}};
 com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator\" params=\"\">\n\t<extends path=\"robotlegs.bender.bundles.mvcs.Mediator\"/>\n\t<view public=\"1\">\n\t\t<c path=\"com.imagination.robotlegs.starling.view.away3d.MainAwayLayer\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</view>\n\t<initialize public=\"1\" set=\"method\" line=\"21\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"16\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
-com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject\" params=\"\">\n\t<extends path=\"away3d.containers.ObjectContainer3D\"/>\n\t<initialize public=\"1\" set=\"method\" line=\"23\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"18\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2.__meta__ = { fields : { view : { inject : null}}};
+com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.MainAwayLayerMediator2\" params=\"\">\n\t<extends path=\"robotlegs.bender.bundles.mvcs.Mediator\"/>\n\t<view public=\"1\">\n\t\t<c path=\"com.imagination.robotlegs.starling.view.away3d.MainAwayLayer2\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</view>\n\t<initialize public=\"1\" set=\"method\" line=\"21\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"16\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject\" params=\"\">\n\t<extends path=\"away3d.containers.ObjectContainer3D\"/>\n\t<cubes><x path=\"openfl.Vector\"><c path=\"away3d.entities.Mesh\"/></x></cubes>\n\t<colour><x path=\"UInt\"/></colour>\n\t<depth><x path=\"Int\"/></depth>\n\t<initialize public=\"1\" set=\"method\" line=\"33\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<update public=\"1\" set=\"method\" line=\"57\"><f a=\"\"><x path=\"Void\"/></f></update>\n\t<new public=\"1\" set=\"method\" line=\"25\"><f a=\"?depth:?colour\" v=\"1000:16777215\">\n\t<x path=\"Int\"/>\n\t<x path=\"UInt\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObjectMediator.__meta__ = { fields : { view : { inject : null}}};
 com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObjectMediator.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObjectMediator\" params=\"\">\n\t<extends path=\"robotlegs.bender.bundles.mvcs.Mediator\"/>\n\t<view public=\"1\">\n\t\t<c path=\"com.imagination.robotlegs.starling.view.away3d.display.ExampleAwayObject\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</view>\n\t<initialize public=\"1\" set=\"method\" line=\"21\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"16\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 starling.events.EventDispatcher.sBubbleChains = new Array();
@@ -74773,10 +75256,10 @@ starling.display.Sprite.sHelperMatrix = new openfl.geom.Matrix();
 starling.display.Sprite.sHelperPoint = new openfl.geom.Point();
 starling.display.Sprite.sHelperRect = new openfl.geom.Rectangle();
 robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer\" params=\"\">\n\t<extends path=\"starling.display.Sprite\"/>\n\t<implements path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<_iRenderer><c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/></_iRenderer>\n\t<starling><c path=\"starling.core.Starling\"/></starling>\n\t<rect public=\"1\" get=\"null\" set=\"accessor\"><c path=\"openfl.geom.Rectangle\"/></rect>\n\t<iRenderer public=\"1\" get=\"accessor\" set=\"accessor\"><c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/></iRenderer>\n\t<process public=\"1\" set=\"method\" line=\"27\"><f a=\"\"><x path=\"Void\"/></f></process>\n\t<setStarling public=\"1\" set=\"method\" line=\"32\"><f a=\"starling\">\n\t<c path=\"starling.core.Starling\"/>\n\t<x path=\"Void\"/>\n</f></setStarling>\n\t<set_rect public=\"1\" set=\"method\" line=\"37\"><f a=\"rect\">\n\t<c path=\"openfl.geom.Rectangle\"/>\n\t<c path=\"openfl.geom.Rectangle\"/>\n</f></set_rect>\n\t<set_iRenderer public=\"1\" set=\"method\" line=\"45\"><f a=\"value\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n</f></set_iRenderer>\n\t<get_iRenderer public=\"1\" set=\"method\" line=\"50\"><f a=\"\"><c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/></f></get_iRenderer>\n\t<new public=\"1\" set=\"method\" line=\"22\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
-com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer\"/>\n\t<container><c path=\"starling.display.Sprite\"/></container>\n\t<initialize public=\"1\" set=\"method\" line=\"26\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<update public=\"1\" set=\"method\" line=\"75\"><f a=\"\"><x path=\"Void\"/></f></update>\n\t<new public=\"1\" set=\"method\" line=\"21\"><f a=\"\"><x path=\"Void\"/></f></new>\n</class>";
+com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer\"/>\n\t<initialize public=\"1\" set=\"method\" line=\"26\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"21\"><f a=\"\"><x path=\"Void\"/></f></new>\n</class>";
 com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayerMediator.__meta__ = { fields : { view : { inject : null}}};
 com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayerMediator.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayerMediator\" params=\"\">\n\t<extends path=\"robotlegs.bender.bundles.mvcs.Mediator\"/>\n\t<view public=\"1\">\n\t\t<c path=\"com.imagination.robotlegs.starling.view.starling.CheckerboardStarlingLayer\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</view>\n\t<initialize public=\"1\" set=\"method\" line=\"17\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"12\"><f a=\"\"><x path=\"Void\"/></f></new>\n</class>";
-com.imagination.robotlegs.starling.view.starling.MainStarlingLayer.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.starling.MainStarlingLayer\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer\"/>\n\t<mParticleSystem><c path=\"starling.extensions.ParticleSystem\"/></mParticleSystem>\n\t<broadcast><c path=\"openfl.display.Sprite\"/></broadcast>\n\t<time line=\"23\"><x path=\"Float\"/></time>\n\t<initialize public=\"1\" set=\"method\" line=\"30\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<Update set=\"method\" line=\"59\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></Update>\n\t<new public=\"1\" set=\"method\" line=\"25\"><f a=\"\"><x path=\"Void\"/></f></new>\n</class>";
+com.imagination.robotlegs.starling.view.starling.MainStarlingLayer.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.starling.MainStarlingLayer\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingLayer\"/>\n\t<time line=\"21\"><x path=\"Float\"/></time>\n\t<assets><c path=\"starling.utils.AssetManager\"/></assets>\n\t<mMovies><x path=\"openfl.Vector\"><c path=\"starling.display.MovieClip\"/></x></mMovies>\n\t<initialize public=\"1\" set=\"method\" line=\"30\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<onComplete set=\"method\" line=\"46\"><f a=\"assets\">\n\t<c path=\"starling.utils.AssetManager\"/>\n\t<x path=\"Void\"/>\n</f></onComplete>\n\t<Update set=\"method\" line=\"67\"><f a=\"e\">\n\t<c path=\"starling.events.EnterFrameEvent\"/>\n\t<x path=\"Void\"/>\n</f></Update>\n\t<new public=\"1\" set=\"method\" line=\"25\"><f a=\"\"><x path=\"Void\"/></f></new>\n</class>";
 com.imagination.robotlegs.starling.view.starling.MainStarlingLayerMediator.__meta__ = { fields : { view : { inject : null}}};
 com.imagination.robotlegs.starling.view.starling.MainStarlingLayerMediator.__rtti = "<class path=\"com.imagination.robotlegs.starling.view.starling.MainStarlingLayerMediator\" params=\"\">\n\t<extends path=\"robotlegs.bender.bundles.mvcs.Mediator\"/>\n\t<view public=\"1\">\n\t\t<c path=\"com.imagination.robotlegs.starling.view.starling.MainStarlingLayer\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</view>\n\t<initialize public=\"1\" set=\"method\" line=\"18\" override=\"1\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<new public=\"1\" set=\"method\" line=\"13\"><f a=\"\"><x path=\"Void\"/></f></new>\n</class>";
 haxe.ds.ObjectMap.count = 0;
@@ -75843,7 +76326,7 @@ openfl.system.Capabilities.hasStreamingAudio = false;
 openfl.system.Capabilities.hasStreamingVideo = false;
 openfl.system.Capabilities.hasTLS = true;
 openfl.system.Capabilities.hasVideoEncoder = false;
-openfl.system.Capabilities.isDebugger = true;
+openfl.system.Capabilities.isDebugger = false;
 openfl.system.Capabilities.isEmbeddedInAcrobat = false;
 openfl.system.Capabilities.localFileReadDisable = true;
 openfl.system.Capabilities.manufacturer = "OpenFL Contributors";
@@ -75857,6 +76340,11 @@ openfl.system.Capabilities.touchscreenType = openfl.system.TouchscreenType.FINGE
 openfl.system.SecurityDomain.currentDomain = new openfl.system.SecurityDomain();
 openfl.system.System.useCodePage = false;
 openfl.text.Font.__registeredFonts = new Array();
+openfl.text.TextField.__utf8_endline_code = 10;
+openfl.text.TextField.ASCENDER = 0;
+openfl.text.TextField.DESCENDER = 1;
+openfl.text.TextField.LINE_HEIGHT = 2;
+openfl.text.TextField.LEADING = 3;
 openfl.ui._KeyLocation.KeyLocation_Impl_.STANDARD = 0;
 openfl.ui._KeyLocation.KeyLocation_Impl_.LEFT = 1;
 openfl.ui._KeyLocation.KeyLocation_Impl_.RIGHT = 2;
@@ -76031,12 +76519,12 @@ robotlegs.bender.extensions.stage3D.away3d.impl.Away3DViewMap.__rtti = "<class p
 robotlegs.bender.extensions.stage3D.base.impl.BaseCollection.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseCollection\" params=\"\">\n\t<_length line=\"24\"><x path=\"UInt\"/></_length>\n\t<items public=\"1\" line=\"26\"><x path=\"Map\">\n\t<c path=\"String\"/>\n\t<d/>\n</x></items>\n\t<length public=\"1\" get=\"accessor\" set=\"null\"><x path=\"UInt\"/></length>\n\t<get_length set=\"method\" line=\"48\"><f a=\"\"><x path=\"UInt\"/></f></get_length>\n\t<new public=\"1\" set=\"method\" line=\"11\">\n\t\t<f a=\"\"><x path=\"Void\"/></f>\n\t\t<meta><m n=\":compilerGenerated\"/></meta>\n\t</new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.away3d.impl.AwayCollection.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.away3d.impl.AwayCollection\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseCollection\"/>\n\t<view3Ds public=\"1\" line=\"42\"><c path=\"Array\"><c path=\"away3d.containers.View3D\"/></c></view3Ds>\n\t<addItem public=\"1\" set=\"method\" line=\"44\"><f a=\"view3D:name\">\n\t<c path=\"away3d.containers.View3D\"/>\n\t<c path=\"String\"/>\n\t<x path=\"UInt\"/>\n</f></addItem>\n\t<removeItem public=\"1\" set=\"method\" line=\"63\"><f a=\"name\">\n\t<c path=\"String\"/>\n\t<c path=\"away3d.containers.View3D\"/>\n</f></removeItem>\n\t<getItem public=\"1\" set=\"method\" line=\"88\"><f a=\"name\">\n\t<c path=\"String\"/>\n\t<c path=\"away3d.containers.View3D\"/>\n</f></getItem>\n\t<new public=\"1\" set=\"method\" line=\"14\"><f a=\"awayCollectionData\">\n\t<c path=\"Array\"><d/></c>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.base.impl.Renderer.__meta__ = { fields : { contextView : { inject : null}, viewport : { inject : null}}};
-robotlegs.bender.extensions.stage3D.base.impl.Renderer.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.base.impl.Renderer\" params=\"\">\n\t<implements path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n\t<_injector><c path=\"robotlegs.bender.framework.api.IInjector\"/></_injector>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<_onReady line=\"29\"><c path=\"msignal.Signal0\"/></_onReady>\n\t<contextView public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.contextView.ContextView\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</contextView>\n\t<viewport public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IViewport\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</viewport>\n\t<layers line=\"34\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/></c></layers>\n\t<_profile><d/></_profile>\n\t<freeFreeStage3DIndex line=\"38\"><x path=\"Int\"/></freeFreeStage3DIndex>\n\t<_stage3D><c path=\"openfl.display.Stage3D\"/></_stage3D>\n\t<antiAlias public=\"1\"><x path=\"Int\"/></antiAlias>\n\t<onReady public=\"1\" get=\"accessor\" set=\"null\"><c path=\"msignal.Signal0\"/></onReady>\n\t<stage3D public=\"1\" get=\"accessor\" set=\"null\"><c path=\"openfl.display.Stage3D\"/></stage3D>\n\t<profile public=\"1\" get=\"accessor\" set=\"null\"><c path=\"String\"/></profile>\n\t<numLayers public=\"1\" get=\"accessor\" set=\"null\"><x path=\"Int\"/></numLayers>\n\t<Renderer public=\"1\" set=\"method\" line=\"50\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></Renderer>\n\t<init public=\"1\" set=\"method\" line=\"56\"><f a=\"profile:?antiAlias\" v=\":0\">\n\t<d/>\n\t<x path=\"Int\"/>\n\t<x path=\"Void\"/>\n</f></init>\n\t<contextCreatedHandler set=\"method\" line=\"71\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></contextCreatedHandler>\n\t<OnViewportChange set=\"method\" line=\"82\"><f a=\"\"><x path=\"Void\"/></f></OnViewportChange>\n\t<start public=\"1\" set=\"method\" line=\"102\"><f a=\"\"><x path=\"Void\"/></f></start>\n\t<stop public=\"1\" set=\"method\" line=\"107\"><f a=\"\"><x path=\"Void\"/></f></stop>\n\t<addLayer public=\"1\" set=\"method\" line=\"112\"><f a=\"layer\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Void\"/>\n</f></addLayer>\n\t<addLayerAt public=\"1\" set=\"method\" line=\"117\"><f a=\"layer:index\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Int\"/>\n\t<x path=\"Void\"/>\n</f></addLayerAt>\n\t<removeLayer public=\"1\" set=\"method\" line=\"143\"><f a=\"layer\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Void\"/>\n</f></removeLayer>\n\t<render public=\"1\" set=\"method\" line=\"153\"><f a=\"\"><x path=\"Void\"/></f></render>\n\t<Update set=\"method\" line=\"158\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></Update>\n\t<get_onReady public=\"1\" set=\"method\" line=\"176\"><f a=\"\"><c path=\"msignal.Signal0\"/></f></get_onReady>\n\t<get_stage3D public=\"1\" set=\"method\" line=\"181\"><f a=\"\"><c path=\"openfl.display.Stage3D\"/></f></get_stage3D>\n\t<get_profile public=\"1\" set=\"method\" line=\"187\"><f a=\"\"><c path=\"String\"/></f></get_profile>\n\t<get_numLayers public=\"1\" set=\"method\" line=\"192\"><f a=\"\"><x path=\"Int\"/></f></get_numLayers>\n\t<new public=\"1\" set=\"method\" line=\"22\">\n\t\t<f a=\"\"><x path=\"Void\"/></f>\n\t\t<meta><m n=\":compilerGenerated\"/></meta>\n\t</new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+robotlegs.bender.extensions.stage3D.base.impl.Renderer.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.base.impl.Renderer\" params=\"\">\n\t<implements path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n\t<_injector><c path=\"robotlegs.bender.framework.api.IInjector\"/></_injector>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<_onReady line=\"33\"><c path=\"msignal.Signal0\"/></_onReady>\n\t<contextView public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.contextView.ContextView\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</contextView>\n\t<viewport public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IViewport\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</viewport>\n\t<layers line=\"38\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/></c></layers>\n\t<_profile><d/></_profile>\n\t<freeFreeStage3DIndex line=\"42\"><x path=\"Int\"/></freeFreeStage3DIndex>\n\t<_stage3D><c path=\"openfl.display.Stage3D\"/></_stage3D>\n\t<_context3D><c path=\"openfl.display3D.Context3D\"/></_context3D>\n\t<antiAlias public=\"1\"><x path=\"Int\"/></antiAlias>\n\t<onReady public=\"1\" get=\"accessor\" set=\"null\"><c path=\"msignal.Signal0\"/></onReady>\n\t<stage3D public=\"1\" get=\"accessor\" set=\"null\"><c path=\"openfl.display.Stage3D\"/></stage3D>\n\t<context3D public=\"1\" get=\"accessor\" set=\"null\"><c path=\"openfl.display3D.Context3D\"/></context3D>\n\t<profile public=\"1\" get=\"accessor\" set=\"null\"><c path=\"String\"/></profile>\n\t<numLayers public=\"1\" get=\"accessor\" set=\"null\"><x path=\"Int\"/></numLayers>\n\t<get_id set=\"method\" line=\"54\"><f a=\"\"><x path=\"Int\"/></f></get_id>\n\t<set_id set=\"method\" line=\"59\"><f a=\"value\">\n\t<x path=\"Int\"/>\n\t<x path=\"Int\"/>\n</f></set_id>\n\t<_id public=\"1\"><x path=\"Int\"/></_id>\n\t<id public=\"1\" get=\"accessor\" set=\"accessor\"><x path=\"Int\"/></id>\n\t<init public=\"1\" set=\"method\" line=\"77\"><f a=\"profile:?antiAlias\" v=\":0\">\n\t<d/>\n\t<x path=\"Int\"/>\n\t<x path=\"Void\"/>\n</f></init>\n\t<contextCreatedHandler set=\"method\" line=\"93\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></contextCreatedHandler>\n\t<OnViewportChange set=\"method\" line=\"113\"><f a=\"\"><x path=\"Void\"/></f></OnViewportChange>\n\t<start public=\"1\" set=\"method\" line=\"133\"><f a=\"\"><x path=\"Void\"/></f></start>\n\t<stop public=\"1\" set=\"method\" line=\"138\"><f a=\"\"><x path=\"Void\"/></f></stop>\n\t<addLayer public=\"1\" set=\"method\" line=\"143\"><f a=\"layer\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Void\"/>\n</f></addLayer>\n\t<addLayerAt public=\"1\" set=\"method\" line=\"149\"><f a=\"layer:index\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Int\"/>\n\t<x path=\"Void\"/>\n</f></addLayerAt>\n\t<removeLayer public=\"1\" set=\"method\" line=\"176\"><f a=\"layer\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Void\"/>\n</f></removeLayer>\n\t<getLayerIndex public=\"1\" set=\"method\" line=\"186\"><f a=\"layer\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.ILayer\"/>\n\t<x path=\"Int\"/>\n</f></getLayerIndex>\n\t<render public=\"1\" set=\"method\" line=\"197\"><f a=\"\"><x path=\"Void\"/></f></render>\n\t<Update set=\"method\" line=\"202\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></Update>\n\t<get_onReady public=\"1\" set=\"method\" line=\"215\"><f a=\"\"><c path=\"msignal.Signal0\"/></f></get_onReady>\n\t<get_stage3D public=\"1\" set=\"method\" line=\"220\"><f a=\"\"><c path=\"openfl.display.Stage3D\"/></f></get_stage3D>\n\t<get_context3D public=\"1\" set=\"method\" line=\"225\"><f a=\"\"><c path=\"openfl.display3D.Context3D\"/></f></get_context3D>\n\t<get_profile public=\"1\" set=\"method\" line=\"230\"><f a=\"\"><c path=\"String\"/></f></get_profile>\n\t<get_numLayers public=\"1\" set=\"method\" line=\"235\"><f a=\"\"><x path=\"Int\"/></f></get_numLayers>\n\t<new public=\"1\" set=\"method\" line=\"69\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.base.impl.Stack.__meta__ = { fields : { contextView : { inject : null}, renderer : { inject : null}, away3DInitializerAvailable : { inject : ["optional=true"]}, starlingInitializerAvailable : { inject : ["optional=true"]}}};
 robotlegs.bender.extensions.stage3D.base.impl.Stack.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.base.impl.Stack\" params=\"\">\n\t<implements path=\"robotlegs.bender.extensions.stage3D.base.api.IStack\"/>\n\t<_injector><c path=\"robotlegs.bender.framework.api.IInjector\"/></_injector>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<context><c path=\"robotlegs.bender.framework.api.IContext\"/></context>\n\t<_debug line=\"29\"><x path=\"Bool\"/></_debug>\n\t<classIDs><c path=\"Array\"><c path=\"Array\"><d/></c></c></classIDs>\n\t<initialized line=\"31\"><x path=\"Bool\"/></initialized>\n\t<debug public=\"1\" get=\"accessor\" set=\"accessor\"><x path=\"Bool\"/></debug>\n\t<contextView public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.contextView.ContextView\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</contextView>\n\t<renderer public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.base.api.IRenderer\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</renderer>\n\t<away3DInitializerAvailable public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.away3d.impl.Away3DInitializerAvailable\"/>\n\t\t<meta><m n=\"inject\"><e>\"optional=true\"</e></m></meta>\n\t</away3DInitializerAvailable>\n\t<starlingInitializerAvailable public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializerAvailable\"/>\n\t\t<meta><m n=\"inject\"><e>\"optional=true\"</e></m></meta>\n\t</starlingInitializerAvailable>\n\t<alternativa3DInitializer public=\"1\"><c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/></alternativa3DInitializer>\n\t<away3DInitializer public=\"1\"><c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/></away3DInitializer>\n\t<flare3DInitializer public=\"1\"><c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/></flare3DInitializer>\n\t<genomeInitializer public=\"1\"><c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/></genomeInitializer>\n\t<starlingInitializer public=\"1\"><c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/></starlingInitializer>\n\t<zest3DInitializer public=\"1\"><c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/></zest3DInitializer>\n\t<initialize set=\"method\" line=\"70\"><f a=\"\"><x path=\"Void\"/></f></initialize>\n\t<createInitializer set=\"method\" line=\"85\"><f a=\"classAlias\">\n\t<c path=\"String\"/>\n\t<c path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/>\n</f></createInitializer>\n\t<addLayer public=\"1\" set=\"method\" line=\"108\"><f a=\"LayerClass:?id\" v=\":''\">\n\t<x path=\"Class\"><d/></x>\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></addLayer>\n\t<addLayerAt public=\"1\" set=\"method\" line=\"113\"><f a=\"LayerClass:index:?id\" v=\"::''\">\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Int\"/>\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></addLayerAt>\n\t<getAddFunc set=\"method\" line=\"122\"><f a=\"layerClass\">\n\t<x path=\"Class\"><d/></x>\n\t<f a=\"::\">\n\t\t<x path=\"Class\"><d/></x>\n\t\t<x path=\"Int\"/>\n\t\t<c path=\"String\"/>\n\t\t<x path=\"Void\"/>\n\t</f>\n</f></getAddFunc>\n\t<addAway3DAt set=\"method\" line=\"162\"><f a=\"AwayClass:index:?id\" v=\"::''\">\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Int\"/>\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></addAway3DAt>\n\t<addStarlingAt set=\"method\" line=\"188\"><f a=\"StarlingLayerClass:index:?id\" v=\"::''\">\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Int\"/>\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></addStarlingAt>\n\t<get_debug public=\"1\" set=\"method\" line=\"209\"><f a=\"\"><x path=\"Bool\"/></f></get_debug>\n\t<set_debug public=\"1\" set=\"method\" line=\"214\"><f a=\"value\">\n\t<x path=\"Bool\"/>\n\t<x path=\"Bool\"/>\n</f></set_debug>\n\t<errorMsg set=\"method\" line=\"223\"><f a=\"index\">\n\t<x path=\"Int\"/>\n\t<c path=\"String\"/>\n</f></errorMsg>\n\t<new public=\"1\" set=\"method\" line=\"55\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.base.impl.Viewport.__meta__ = { fields : { contextView : { inject : null}}};
 robotlegs.bender.extensions.stage3D.base.impl.Viewport.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.base.impl.Viewport\" params=\"\">\n\t<implements path=\"robotlegs.bender.extensions.stage3D.base.api.IViewport\"/>\n\t<_injector><c path=\"robotlegs.bender.framework.api.IInjector\"/></_injector>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<contextView public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.contextView.ContextView\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</contextView>\n\t<_rect line=\"27\"><c path=\"openfl.geom.Rectangle\"/></_rect>\n\t<lastRect line=\"28\"><c path=\"openfl.geom.Rectangle\"/></lastRect>\n\t<_onChange line=\"30\"><c path=\"msignal.Signal0\"/></_onChange>\n\t<rect public=\"1\" get=\"accessor\" set=\"accessor\"><c path=\"openfl.geom.Rectangle\"/></rect>\n\t<onChange public=\"1\" get=\"accessor\" set=\"null\"><c path=\"msignal.Signal0\"/></onChange>\n\t<Viewport public=\"1\" set=\"method\" line=\"38\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></Viewport>\n\t<init public=\"1\" set=\"method\" line=\"45\"><f a=\"\"><x path=\"Void\"/></f></init>\n\t<CheckForChange set=\"method\" line=\"50\"><f a=\"e\">\n\t<c path=\"openfl.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></CheckForChange>\n\t<get_rect public=\"1\" set=\"method\" line=\"59\"><f a=\"\"><c path=\"openfl.geom.Rectangle\"/></f></get_rect>\n\t<set_rect public=\"1\" set=\"method\" line=\"64\"><f a=\"value\">\n\t<c path=\"openfl.geom.Rectangle\"/>\n\t<c path=\"openfl.geom.Rectangle\"/>\n</f></set_rect>\n\t<get_onChange public=\"1\" set=\"method\" line=\"70\"><f a=\"\"><c path=\"msignal.Signal0\"/></f></get_onChange>\n\t<new public=\"1\" set=\"method\" line=\"17\">\n\t\t<f a=\"\"><x path=\"Void\"/></f>\n\t\t<meta><m n=\":compilerGenerated\"/></meta>\n\t</new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
-robotlegs.bender.extensions.stage3D.starling.StarlingIntegrationExtension.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.StarlingIntegrationExtension\" params=\"\">\n\t<implements path=\"robotlegs.bender.framework.api.IExtension\"/>\n\t<_uid><c path=\"String\"/></_uid>\n\t<_context><c path=\"robotlegs.bender.framework.api.IContext\"/></_context>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<extend public=\"1\" set=\"method\" line=\"53\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></extend>\n\t<toString public=\"1\" set=\"method\" line=\"70\"><f a=\"\"><c path=\"String\"/></f></toString>\n\t<handleStarlingCollection set=\"method\" line=\"85\"><f a=\"starlingCollection\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection\"/>\n\t<x path=\"Void\"/>\n</f></handleStarlingCollection>\n\t<new public=\"1\" set=\"method\" line=\"46\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+robotlegs.bender.extensions.stage3D.starling.StarlingIntegrationExtension.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.StarlingIntegrationExtension\" params=\"\">\n\t<implements path=\"robotlegs.bender.framework.api.IExtension\"/>\n\t<_uid><c path=\"String\"/></_uid>\n\t<_context><c path=\"robotlegs.bender.framework.api.IContext\"/></_context>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<extend public=\"1\" set=\"method\" line=\"52\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></extend>\n\t<toString public=\"1\" set=\"method\" line=\"69\"><f a=\"\"><c path=\"String\"/></f></toString>\n\t<handleStarlingCollection set=\"method\" line=\"84\"><f a=\"starlingCollection\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection\"/>\n\t<x path=\"Void\"/>\n</f></handleStarlingCollection>\n\t<new public=\"1\" set=\"method\" line=\"45\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.starling.StarlingStageSyncExtension.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.StarlingStageSyncExtension\" params=\"\">\n\t<implements path=\"robotlegs.bender.framework.api.IExtension\"/>\n\t<_uid><c path=\"String\"/></_uid>\n\t<_context><c path=\"robotlegs.bender.framework.api.IContext\"/></_context>\n\t<_contextView><t path=\"flash.display.DisplayObjectContainer\"/></_contextView>\n\t<_logger><c path=\"robotlegs.bender.framework.api.ILogger\"/></_logger>\n\t<_contextReady><x path=\"Bool\"/></_contextReady>\n\t<_starlingCollection><c path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection\"/></_starlingCollection>\n\t<_numStarlingsInQueue line=\"58\"><x path=\"Int\"/></_numStarlingsInQueue>\n\t<extend public=\"1\" set=\"method\" line=\"67\"><f a=\"context\">\n\t<c path=\"robotlegs.bender.framework.api.IContext\"/>\n\t<x path=\"Void\"/>\n</f></extend>\n\t<toString public=\"1\" set=\"method\" line=\"80\"><f a=\"\"><c path=\"String\"/></f></toString>\n\t<handleStarlingCollection set=\"method\" line=\"98\"><f a=\"collection\">\n\t<c path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection\"/>\n\t<x path=\"Void\"/>\n</f></handleStarlingCollection>\n\t<handleStarlingContextView set=\"method\" line=\"120\"><f a=\"currentStarling\">\n\t<c path=\"starling.core.Starling\"/>\n\t<x path=\"Void\"/>\n</f></handleStarlingContextView>\n\t<onContextCreated set=\"method\" line=\"139\"><f a=\"event\">\n\t<c path=\"starling.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></onContextCreated>\n\t<initializeContext set=\"method\" line=\"155\"><f a=\"\"><x path=\"Void\"/></f></initializeContext>\n\t<new public=\"1\" set=\"method\" line=\"60\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseCollection\"/>\n\t<starlings public=\"1\" line=\"48\"><x path=\"openfl.Vector\"><c path=\"starling.core.Starling\"/></x></starlings>\n\t<addItem public=\"1\" set=\"method\" line=\"50\"><f a=\"starling:name\">\n\t<c path=\"starling.core.Starling\"/>\n\t<c path=\"String\"/>\n\t<x path=\"UInt\"/>\n</f></addItem>\n\t<removeItem public=\"1\" set=\"method\" line=\"68\"><f a=\"name\">\n\t<c path=\"String\"/>\n\t<c path=\"starling.core.Starling\"/>\n</f></removeItem>\n\t<getItem public=\"1\" set=\"method\" line=\"92\"><f a=\"name\">\n\t<c path=\"String\"/>\n\t<c path=\"starling.core.Starling\"/>\n</f></getItem>\n\t<new public=\"1\" set=\"method\" line=\"21\"><f a=\"starlingCollectionData\">\n\t<c path=\"Array\"><d/></c>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingInitializer\" params=\"\">\n\t<extends path=\"robotlegs.bender.extensions.stage3D.base.impl.BaseInitializer\"/>\n\t<addLayer public=\"1\" set=\"method\" line=\"24\" override=\"1\"><f a=\"ViewClass:index:id\">\n\t<x path=\"Class\"><d/></x>\n\t<x path=\"Int\"/>\n\t<c path=\"String\"/>\n\t<x path=\"Void\"/>\n</f></addLayer>\n\t<new public=\"1\" set=\"method\" line=\"19\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
@@ -76045,7 +76533,7 @@ robotlegs.bender.extensions.stage3D.starling.impl.StarlingViewMap.__meta__ = { f
 robotlegs.bender.extensions.stage3D.starling.impl.StarlingViewMap.__rtti = "<class path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingViewMap\" params=\"\">\n\t<implements path=\"robotlegs.bender.extensions.stage3D.starling.api.IStarlingViewMap\"/>\n\t<starlingCollection public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.stage3D.starling.impl.StarlingCollection\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</starlingCollection>\n\t<mediatorMap public=\"1\">\n\t\t<c path=\"robotlegs.bender.extensions.mediatorMap.api.IMediatorMap\"/>\n\t\t<meta><m n=\"inject\"/></meta>\n\t</mediatorMap>\n\t<init public=\"1\" set=\"method\" line=\"39\">\n\t\t<f a=\"\"><x path=\"Void\"/></f>\n\t\t<meta><m n=\"postConstruct\"/></meta>\n\t</init>\n\t<addStarlingView public=\"1\" set=\"method\" line=\"59\"><f a=\"view\">\n\t<c path=\"starling.display.DisplayObject\"/>\n\t<x path=\"Void\"/>\n</f></addStarlingView>\n\t<removeStarlingView public=\"1\" set=\"method\" line=\"69\"><f a=\"view\">\n\t<c path=\"starling.display.DisplayObject\"/>\n\t<x path=\"Void\"/>\n</f></removeStarlingView>\n\t<onStarlingAdded set=\"method\" line=\"85\"><f a=\"event\">\n\t<c path=\"starling.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></onStarlingAdded>\n\t<onStarlingRemoved set=\"method\" line=\"95\"><f a=\"event\">\n\t<c path=\"starling.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></onStarlingRemoved>\n\t<onRootCreated set=\"method\" line=\"106\"><f a=\"event\">\n\t<c path=\"starling.events.Event\"/>\n\t<x path=\"Void\"/>\n</f></onRootCreated>\n\t<new public=\"1\" set=\"method\" line=\"33\"><f a=\"\"><x path=\"Void\"/></f></new>\n\t<meta>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.viewManager.impl.ConfigureViewEvent.CONFIGURE_VIEW = "configureView";
 robotlegs.bender.extensions.viewManager.impl.ContainerBindingEvent.BINDING_EMPTY = "bindingEmpty";
-robotlegs.bender.extensions.viewManager.impl.ContainerRegistry.__rtti = "<class path=\"robotlegs.bender.extensions.viewManager.impl.ContainerRegistry\" params=\"\">\n\t<extends path=\"openfl.events.EventDispatcher\"/>\n\t<bindings public=\"1\" get=\"accessor\" set=\"null\" line=\"32\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></bindings>\n\t<get_bindings public=\"1\" set=\"method\" line=\"36\"><f a=\"\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></f></get_bindings>\n\t<rootBindings public=\"1\" get=\"accessor\" set=\"null\" line=\"42\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></rootBindings>\n\t<get_rootBindings public=\"1\" set=\"method\" line=\"47\"><f a=\"\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></f></get_rootBindings>\n\t<_bindingByContainer line=\"56\"><x path=\"Map\">\n\t<c path=\"openfl.display.DisplayObject\"/>\n\t<d/>\n</x></_bindingByContainer>\n\t<addContainer public=\"1\" set=\"method\" line=\"65\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></addContainer>\n\t<removeContainer public=\"1\" set=\"method\" line=\"77\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></removeContainer>\n\t<findParentBinding public=\"1\" set=\"method\" line=\"89\"><f a=\"target\">\n\t<c path=\"openfl.display.DisplayObject\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></findParentBinding>\n\t<getBinding public=\"1\" set=\"method\" line=\"107\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></getBinding>\n\t<createBinding set=\"method\" line=\"116\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></createBinding>\n\t<removeBinding set=\"method\" line=\"155\"><f a=\"binding\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n\t<x path=\"Void\"/>\n</f></removeBinding>\n\t<addRootBinding set=\"method\" line=\"190\"><f a=\"binding\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n\t<x path=\"Void\"/>\n</f></addRootBinding>\n\t<removeRootBinding set=\"method\" line=\"196\"><f a=\"binding\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n\t<x path=\"Void\"/>\n</f></removeRootBinding>\n\t<onBindingEmpty set=\"method\" line=\"203\"><f a=\"event\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBindingEvent\"/>\n\t<x path=\"Void\"/>\n</f></onBindingEmpty>\n\t<new public=\"1\" set=\"method\" line=\"24\"><f a=\"?target\">\n\t<c path=\"openfl.events.IEventDispatcher\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
+robotlegs.bender.extensions.viewManager.impl.ContainerRegistry.__rtti = "<class path=\"robotlegs.bender.extensions.viewManager.impl.ContainerRegistry\" params=\"\">\n\t<extends path=\"openfl.events.EventDispatcher\"/>\n\t<bindings public=\"1\" get=\"accessor\" set=\"null\" line=\"32\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></bindings>\n\t<get_bindings public=\"1\" set=\"method\" line=\"36\"><f a=\"\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></f></get_bindings>\n\t<rootBindings public=\"1\" get=\"accessor\" set=\"null\" line=\"42\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></rootBindings>\n\t<get_rootBindings public=\"1\" set=\"method\" line=\"47\"><f a=\"\"><c path=\"Array\"><c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/></c></f></get_rootBindings>\n\t<_bindingByContainer line=\"56\"><x path=\"Map\">\n\t<c path=\"openfl.display.DisplayObject\"/>\n\t<d/>\n</x></_bindingByContainer>\n\t<addContainer public=\"1\" set=\"method\" line=\"65\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></addContainer>\n\t<removeContainer public=\"1\" set=\"method\" line=\"79\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></removeContainer>\n\t<findParentBinding public=\"1\" set=\"method\" line=\"91\"><f a=\"target\">\n\t<c path=\"openfl.display.DisplayObject\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></findParentBinding>\n\t<getBinding public=\"1\" set=\"method\" line=\"109\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></getBinding>\n\t<createBinding set=\"method\" line=\"118\"><f a=\"container\">\n\t<c path=\"openfl.display.DisplayObjectContainer\"/>\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n</f></createBinding>\n\t<removeBinding set=\"method\" line=\"157\"><f a=\"binding\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n\t<x path=\"Void\"/>\n</f></removeBinding>\n\t<addRootBinding set=\"method\" line=\"192\"><f a=\"binding\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n\t<x path=\"Void\"/>\n</f></addRootBinding>\n\t<removeRootBinding set=\"method\" line=\"198\"><f a=\"binding\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBinding\"/>\n\t<x path=\"Void\"/>\n</f></removeRootBinding>\n\t<onBindingEmpty set=\"method\" line=\"205\"><f a=\"event\">\n\t<c path=\"robotlegs.bender.extensions.viewManager.impl.ContainerBindingEvent\"/>\n\t<x path=\"Void\"/>\n</f></onBindingEmpty>\n\t<new public=\"1\" set=\"method\" line=\"24\"><f a=\"?target\">\n\t<c path=\"openfl.events.IEventDispatcher\"/>\n\t<x path=\"Void\"/>\n</f></new>\n\t<meta>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":meta\"><e>'???'</e></m>\n\t\t<m n=\":rtti\"/>\n\t\t<m n=\":keepSub\"/>\n\t</meta>\n</class>";
 robotlegs.bender.extensions.viewManager.impl.ContainerRegistryEvent.CONTAINER_ADD = "containerAdd";
 robotlegs.bender.extensions.viewManager.impl.ContainerRegistryEvent.CONTAINER_REMOVE = "containerRemove";
 robotlegs.bender.extensions.viewManager.impl.ContainerRegistryEvent.ROOT_CONTAINER_ADD = "rootContainerAdd";
@@ -76224,9 +76712,6 @@ starling.events.TouchProcessor.sHoveringTouchData = (function($this) {
 	return $r;
 }(this));
 starling.events.TouchProcessor.sHelperPoint = new openfl.geom.Point();
-starling.extensions.ParticleSystem.MAX_NUM_PARTICLES = 16383;
-starling.extensions.ParticleSystem.sHelperMatrix = new openfl.geom.Matrix();
-starling.extensions.ParticleSystem.sHelperPoint = new openfl.geom.Point();
 starling.filters.FragmentFilter.sStageBounds = new openfl.geom.Rectangle();
 starling.filters.FragmentFilter.sTransformationMatrix = new openfl.geom.Matrix();
 starling.filters.FragmentFilterMode.BELOW = "below";
@@ -76270,9 +76755,39 @@ starling.text.TextFieldAutoSize.BOTH_DIRECTIONS = "bothDirections";
 starling.textures.ConcreteTexture.TEXTURE_READY = "textureReady";
 starling.textures.ConcreteTexture.sOrigin = new openfl.geom.Point();
 starling.textures.SubTexture.sTexCoords = new openfl.geom.Point();
+starling.textures.TextureAtlas.sNames = (function($this) {
+	var $r;
+	var this1;
+	this1 = new openfl.VectorData();
+	{
+		var this2;
+		this2 = new Array(0);
+		this1.data = this2;
+	}
+	this1.length = 0;
+	this1.fixed = false;
+	$r = this1;
+	return $r;
+}(this));
 starling.textures.TextureSmoothing.NONE = "none";
 starling.textures.TextureSmoothing.BILINEAR = "bilinear";
 starling.textures.TextureSmoothing.TRILINEAR = "trilinear";
+starling.utils.AssetManager.HTTP_RESPONSE_STATUS = "httpResponseStatus";
+starling.utils.AssetManager.sNames = (function($this) {
+	var $r;
+	var this1;
+	this1 = new openfl.VectorData();
+	{
+		var this2;
+		this2 = new Array(0);
+		this1.data = this2;
+	}
+	this1.length = 0;
+	this1.fixed = false;
+	$r = this1;
+	return $r;
+}(this));
+starling.utils.AssetManager.NAME_REGEX = new EReg("([^\\?/\\\\]+?)(?:\\.([\\w\\-]+))?(?:\\?.*)?$","");
 starling.utils.Color.WHITE = 16777215;
 starling.utils.Color.SILVER = 12632256;
 starling.utils.Color.GRAY = 8421504;
@@ -76321,5 +76836,3 @@ starling.utils.VertexData.sHelperPoint = new openfl.geom.Point();
 starling.utils.VertexData.sHelperPoint3D = new openfl.geom.Vector3D();
 ApplicationMain.main();
 })(typeof window != "undefined" ? window : exports);
-
-//# sourceMappingURL=ImagRobotlegsStarling.js.map

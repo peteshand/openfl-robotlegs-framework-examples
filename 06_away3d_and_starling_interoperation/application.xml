@@ -11,7 +11,7 @@
 	<window background="#000000" fps="60" />
 	
 	<!--<window width="0" height="0" unless="mobile" />-->
-	<window width="800" height="450" fps="60" />
+	<window width="1000" height="560" fps="60" />
 	<window width="0" height="0" fps="60" if="html5" />
 	
 	<window fullscreen="true" resizable="true"/>
@@ -25,14 +25,18 @@
 	<source path="C:/_projects/Imagination/imag-syd-as3/robotlegs-extensions-Imag-Hx/src" />
 	<source path="C:/_projects/Starling/Starling-Extension-Particle-System/src" />
 	
+	<source path="C:/_projects/HaxeLibraries/Starling/haxe-starling/src" />
+	<source path="C:/_projects/HaxeLibraries/Robotlegs/openfl-robotlegs-framework/src" />
+	<source path="C:/_projects/HaxeLibraries/Away3D/away3d-core-openfl" />
+	
 	
 	
 	<haxelib name="openfl" />
 	<haxelib name="swiftsuspenders" />
-	<haxelib name="robotlegs" />
+	<!--<haxelib name="robotlegs" />-->
 	<haxelib name="msignal" />
-	<haxelib name="away3D" />
-	<haxelib name="starling" />
+	<!--<haxelib name="away3D" />-->
+	<!--<haxelib name="starling" />-->
 	
 	<!-- assets -->
 	<icon path="assets/openfl.svg" />

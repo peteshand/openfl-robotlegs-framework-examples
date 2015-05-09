@@ -34,6 +34,18 @@ class ApplicationMain {
 		var types = [];
 		
 		
+		urls.push ("img/atlas.png");
+		types.push (lime.Assets.AssetType.IMAGE);
+		
+		
+		urls.push ("img/atlas.xml");
+		types.push (lime.Assets.AssetType.TEXT);
+		
+		
+		urls.push ("img/landscape.jpg");
+		types.push (lime.Assets.AssetType.IMAGE);
+		
+		
 		urls.push ("img/stars.pex");
 		types.push (lime.Assets.AssetType.TEXT);
 		
@@ -118,7 +130,7 @@ class ApplicationMain {
 			file: "ImagRobotlegsStarling",
 			fps: Std.int (60),
 			fullscreen: true,
-			height: Std.int (450),
+			height: Std.int (560),
 			orientation: "",
 			packageName: "com.imagination.robotlegs.starling.ImagRobotlegsStarling",
 			resizable: true,
@@ -126,13 +138,13 @@ class ApplicationMain {
 			title: "ImagRobotlegsStarling",
 			version: "1.0.0",
 			vsync: false,
-			width: Std.int (800),
+			width: Std.int (1000),
 			
 		}
 		
 		#if (js && html5)
 		#if (munit || utest)
-		openfl.Lib.embed (null, 800, 450, "000000");
+		openfl.Lib.embed (null, 1000, 560, "000000");
 		#end
 		#else
 		create ();
