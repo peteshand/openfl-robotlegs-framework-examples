@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+	<!-- NMML reference: https://gist.github.com/1763850 -->
+	
+	<!-- metadata, make sure 'package' is at least 3 segments (ie. com.mycompany.myproject) -->
+	<meta title="ToDoList" package="com.imagination.todo.ToDoList" version="1.0.0" company="P.J.Shand" />
+	
+	<!-- output -->
+	<app main="com.imagination.todo.Main" file="ToDoList" path="bin" />
+	
+	<window width="800" height="450" 
+		orientation="landscape" 
+		vsync="true" fps="60" 
+		hardware="true" 
+		allow-shaders="true" 
+		require-shaders="true" 
+		depth-buffer="false" 
+		stencil-buffer="true" 
+		background="0xFFFFFF"
+	/>
+	<window width="0" height="0" fps="60" if="html5" />
+	
+	<window fullscreen="true" resizable="true"/>
+	
+	<window orientation="landscape" vsync="false" antialiasing="0" if="cpp" />
+	
+	<!-- classpath, haxe libs -->
+	<source path="src" />
+	
+	<haxelib name="openfl" />
+	<haxelib name="actuate" />
+	<haxelib name="robotlegs" />
+	<haxelib name="swiftsuspenders" />
+	<haxelib name="msignal" />
+	
+	<!-- assets -->
+	<icon path="assets/openfl.svg" />
+	<assets path="assets/img" rename="img" />
+	<assets path="assets/xml" rename="xml" />
+	
+	<haxedef name="source-map-content" if="html5" />
+	<haxedef name="dom" if="html5" />
+	<app swf-version="17"/>
+	
+	<!-- optimize output -->
+	<!--<haxeflag name="-dce full" />--> <!-- Will most likely fail due to the large amount of reflection --> 
+	<haxeflag name="-dce std" />
+	<!--<haxeflag name="-dce no" />-->
+	
+</project>

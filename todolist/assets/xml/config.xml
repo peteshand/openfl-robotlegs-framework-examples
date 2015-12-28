@@ -1,0 +1,19 @@
+<!-- 
+EXTERNAL APP CONFIG 
+Values from this xml file will be injected into
+$(PackageName).model.config.ConfigModel on initialization.
+reference bin/xml/_example_config.xml
+-->
+
+<?xml version="1.0" encoding="utf-8" ?>
+<data>
+	<!--Default Settings-->
+	<alwaysOnTop>false</alwaysOnTop>
+	<fullscreenOnInit>false</fullscreenOnInit>
+	<retainScreenPosition>true</retainScreenPosition>
+	<setContextMenu>true</setContextMenu>
+	<logErrors>true</logErrors>
+	<autoScaleViewport>true</autoScaleViewport>
+	<!--Custom Settings-->
+	<!--...-->
+</data>
