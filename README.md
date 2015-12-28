@@ -1,3 +1,3 @@
 # openfl-robotlegs-framework-examples
 
-Work in progress example. (NOT COMPLETE)
+This repo contains basic examples demonstrating how to setup a robotlegs haxe project
